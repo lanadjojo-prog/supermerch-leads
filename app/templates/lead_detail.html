@@ -14,5 +14,19 @@
 <div class="actions"><form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="approved"><button class="button">✓ Goedkeuren</button></form>
 <form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="rejected"><button class="button ghost">Afwijzen</button></form></div></section>
 </div>
-<section class="panel"><div class="panel-head"><h2>Concept outreach</h2>{% if mailto %}<a class="button small" href="{{ mailto }}">Open in mail</a>{% endif %}</div><div class="outreach">{{ lead.outreach_text or 'Nog geen concept gegenereerd.' }}</div></section>
+<section class="panel">
+  <div class="panel-head"><h2>Concept outreach</h2>
+    <div class="actions">
+      {% if mailto %}<a class="button small ghost" href="{{ mailto }}">Open in mail</a>{% endif %}
+      {% if lead.status == 'approved' and zoho_connected and lead.email and lead.outreach_text %}
+      <form method="post" action="/leads/{{ lead.id }}/send-zoho" onsubmit="return confirm('Deze e-mail nu echt versturen via Zoho Mail?')">
+        <button class="button small" type="submit">Verstuur via Zoho</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if send_message %}<div class="notice {{ 'error' if send_error else '' }}">{{ send_message }}</div>{% endif %}
+  <div class="outreach">{{ lead.outreach_text or 'Nog geen concept gegenereerd.' }}</div>
+  {% if lead.status != 'approved' %}<p class="hint">Keur de lead eerst goed voordat verzenden via Zoho beschikbaar wordt.</p>{% endif %}
+</section>
 {% endblock %}

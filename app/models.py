@@ -57,3 +57,15 @@ class Lead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     campaign: Mapped[Campaign] = relationship(back_populates="leads")
+
+
+class MailIntegration(Base):
+    __tablename__ = "mail_integrations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    account_id: Mapped[str] = mapped_column(String(120))
+    email_address: Mapped[str] = mapped_column(String(220))
+    refresh_token_encrypted: Mapped[str] = mapped_column(Text)
+    connected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

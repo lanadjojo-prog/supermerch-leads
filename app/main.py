@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import threading
 import logging
+from secrets import compare_digest
 from pathlib import Path
 from urllib.parse import quote, quote_plus
 
@@ -18,7 +19,9 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
+from .services.daily_engine import run_daily_lead_engine
 from .services.intelligence import generate_outreach
+from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
 
 logger = logging.getLogger(__name__)
@@ -67,12 +70,20 @@ def health():
     return {"ok": True}
 
 
+@app.post("/api/internal/daily-lead-engine")
+def internal_daily_lead_engine(request: Request, db: Session = Depends(get_db)):
+    token = request.headers.get("X-Automation-Token", "")
+    if not settings.daily_job_token or not compare_digest(token, settings.daily_job_token):
+        raise HTTPException(401, "Unauthorized")
+    return run_daily_lead_engine(db)
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(auth)])
 def dashboard(request: Request, db: Session = Depends(get_db)):
     campaigns = db.scalars(select(Campaign).order_by(Campaign.created_at.desc())).all()
     counts = dict(db.execute(select(Lead.status, func.count(Lead.id)).group_by(Lead.status)).all())
     top_leads = db.scalars(select(Lead).where(Lead.status == "ready_for_review").order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)).all()
-    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db)})
+    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": sent_today(db), "daily_target": settings.daily_send_target})
 
 
 @app.get("/campaigns/new", response_class=HTMLResponse, dependencies=[Depends(auth)])
@@ -179,10 +190,18 @@ def zoho_disconnect(db: Session = Depends(get_db)):
 
 @app.post("/leads/send-all-approved", dependencies=[Depends(auth)])
 def send_all_approved_via_zoho(db: Session = Depends(get_db)):
-    if not zoho_mail.connected(db): return RedirectResponse(f"/?error=1&message={quote_plus('Zoho Mail is niet verbonden.')}", status_code=303)
-    leads = db.scalars(select(Lead).where(Lead.status == "approved").order_by(Lead.created_at.asc())).all()
-    if not leads: return RedirectResponse(f"/?message={quote_plus('Er staan geen goedgekeurde mails klaar.')}", status_code=303)
+    if not zoho_mail.connected(db):
+        return RedirectResponse(f"/?error=1&message={quote_plus('Zoho Mail is niet verbonden.')}", status_code=303)
+
+    leads = db.scalars(
+        select(Lead).where(Lead.status == "approved").order_by(Lead.created_at.asc())
+    ).all()
+    if not leads:
+        return RedirectResponse(f"/?message={quote_plus('Er staan geen goedgekeurde mails klaar.')}", status_code=303)
+
     sent = needs_attention = send_failed = 0
+    limit_reached = False
+
     for lead in leads:
         if not lead.email or not lead.outreach_text:
             lead.status = "needs_attention"
@@ -190,24 +209,24 @@ def send_all_approved_via_zoho(db: Session = Depends(get_db)):
             needs_attention += 1
             continue
         try:
-            zoho_mail.send_email(db, to_address=lead.email, subject=f"Merchandise voor {lead.company_name}", content=lead.outreach_text)
-            lead.status = "contacted"
-            db.commit()
-            sent += 1
+            if send_lead(db, lead):
+                sent += 1
+        except DailySendLimitReached:
+            limit_reached = True
+            break
         except Exception as exc:
-            db.rollback()
-            failed_lead = db.get(Lead, lead.id)
-            if failed_lead:
-                failed_lead.status = "send_failed"
-                db.commit()
             logger.exception("Zoho send failed for lead %s (%s): %s", lead.id, lead.company_name, exc)
             send_failed += 1
+
     message = f"{sent} mail(s) verzonden"
     if needs_attention:
         message += f"; {needs_attention} naar Actie nodig"
     if send_failed:
         message += f"; {send_failed} naar Verzendfout"
+    if limit_reached:
+        message += f"; daglimiet van {settings.daily_send_target} bereikt"
     message += "."
+
     return RedirectResponse(
         f"/?{'error=1&' if (needs_attention or send_failed) else ''}message={quote_plus(message)}",
         status_code=303,
@@ -217,21 +236,35 @@ def send_all_approved_via_zoho(db: Session = Depends(get_db)):
 @app.post("/leads/{lead_id}/send-zoho", dependencies=[Depends(auth)])
 def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
     lead = db.get(Lead, lead_id)
-    if not lead: raise HTTPException(404)
-    if lead.status != "approved": return RedirectResponse(f"/leads/{lead_id}?error=1&message={quote_plus('Keur deze lead eerst goed.')}", status_code=303)
-    if not lead.email or not lead.outreach_text: return RedirectResponse(f"/leads/{lead_id}?error=1&message={quote_plus('E-mailadres of conceptmail ontbreekt.')}", status_code=303)
+    if not lead:
+        raise HTTPException(404)
+    if lead.status != "approved":
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('Keur deze lead eerst goed.')}",
+            status_code=303,
+        )
+    if not lead.email or not lead.outreach_text:
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('E-mailadres of conceptmail ontbreekt.')}",
+            status_code=303,
+        )
     try:
-        zoho_mail.send_email(db, to_address=lead.email, subject=f"Merchandise voor {lead.company_name}", content=lead.outreach_text)
-        lead.status = "contacted"; db.commit()
-        return RedirectResponse(f"/leads/{lead_id}?message={quote_plus('E-mail is verzonden via Zoho Mail.')}", status_code=303)
+        send_lead(db, lead)
+        return RedirectResponse(
+            f"/leads/{lead_id}?message={quote_plus('E-mail is verzonden via Zoho Mail.')}",
+            status_code=303,
+        )
+    except DailySendLimitReached:
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('Daglimiet van ' + str(settings.daily_send_target) + ' mails is bereikt.')}",
+            status_code=303,
+        )
     except Exception as exc:
-        db.rollback()
-        failed_lead = db.get(Lead, lead_id)
-        if failed_lead:
-            failed_lead.status = "send_failed"
-            db.commit()
         logger.exception("Zoho send failed for lead %s (%s): %s", lead_id, lead.company_name, exc)
-        return RedirectResponse(f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt. De lead staat nu bij Verzendfout.')}", status_code=303)
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt. De lead staat nu bij Verzendfout.')}",
+            status_code=303,
+        )
 
 
 @app.post("/leads/{lead_id}/regenerate-outreach", dependencies=[Depends(auth)])

@@ -90,14 +90,27 @@ def chat_start_campaign(payload: CampaignStart, background_tasks: BackgroundTask
 
 @router.post("/leads/approve-review", dependencies=[Depends(auth)])
 def chat_approve_review(payload: CampaignScope, db: Session = Depends(get_db)):
-    stmt = update(Lead).where(Lead.status == "ready_for_review")
+    stmt = select(Lead).where(Lead.status == "ready_for_review")
     if payload.campaign_id is not None:
         if not db.get(Campaign, payload.campaign_id):
             raise HTTPException(404, "Campaign not found")
         stmt = stmt.where(Lead.campaign_id == payload.campaign_id)
-    result = db.execute(stmt.values(status="approved"))
+    leads = db.scalars(stmt).all()
+    approved = needs_attention = 0
+    for lead in leads:
+        if lead.email and lead.outreach_text:
+            lead.status = "approved"
+            approved += 1
+        else:
+            lead.status = "needs_attention"
+            needs_attention += 1
     db.commit()
-    return {"ok": True, "approved": result.rowcount or 0, "campaign_id": payload.campaign_id}
+    return {
+        "ok": True,
+        "approved": approved,
+        "needs_attention": needs_attention,
+        "campaign_id": payload.campaign_id,
+    }
 
 
 @router.post("/leads/send-approved", dependencies=[Depends(auth)])

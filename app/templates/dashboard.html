@@ -17,6 +17,16 @@
   <div class="stat"><span>Gecontacteerd</span><strong>{{ counts.get('contacted', 0) }}</strong></div>
   <div class="stat"><span>Afgewezen</span><strong>{{ counts.get('rejected', 0) }}</strong></div>
 </div>
+{% if counts.get('needs_attention', 0) > 0 or counts.get('send_failed', 0) > 0 %}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Actie nodig</h2>
+      <p>{{ counts.get('needs_attention', 0) }} zonder verzendklare mail · {{ counts.get('send_failed', 0) }} verzendfout{{ '' if counts.get('send_failed', 0) == 1 else 'en' }}.</p>
+    </div>
+  </div>
+</section>
+{% endif %}
 {% if counts.get('ready_for_review', 0) > 0 %}
 <section class="panel"><div class="panel-head">
   <div><h2>Klaar voor beoordeling</h2><p>{{ counts.get('ready_for_review', 0) }} lead{{ '' if counts.get('ready_for_review', 0) == 1 else 's' }} klaar voor review.</p></div>

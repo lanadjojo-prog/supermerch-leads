@@ -1,0 +1,14 @@
+name: Keep SuperMerch Lead Engine awake
+
+on:
+  schedule:
+    - cron: "*/10 7-18 * * *"
+  workflow_dispatch:
+
+jobs:
+  keep-awake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping health endpoint
+        run: curl --fail --silent --show-error --max-time 60 https://supermerch-leads.onrender.com/health

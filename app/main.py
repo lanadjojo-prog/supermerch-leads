@@ -119,9 +119,20 @@ def set_lead_status(lead_id: int, status_value: str = Form(...), db: Session = D
 
 @app.post("/leads/approve-all-review", dependencies=[Depends(auth)])
 def approve_all_review(db: Session = Depends(get_db)):
-    result = db.execute(update(Lead).where(Lead.status == "ready_for_review").values(status="approved")); db.commit()
-    count = result.rowcount or 0
-    message = f"{count} lead(s) goedgekeurd." if count else "Er stonden geen leads klaar voor review."
+    ready = db.scalars(select(Lead).where(Lead.status == "ready_for_review")).all()
+    approved = needs_attention = 0
+    for lead in ready:
+        if lead.email and lead.outreach_text:
+            lead.status = "approved"
+            approved += 1
+        else:
+            lead.status = "needs_attention"
+            needs_attention += 1
+    db.commit()
+    message = f"{approved} lead(s) goedgekeurd"
+    if needs_attention:
+        message += f"; {needs_attention} naar Actie nodig"
+    message += "."
     return RedirectResponse(f"/?message={quote_plus(message)}", status_code=303)
 
 

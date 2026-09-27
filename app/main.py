@@ -19,6 +19,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
+from .services.automation_scheduler import run_automation_scheduler
 from .services.daily_engine import run_daily_lead_engine
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -43,7 +44,19 @@ async def lifespan(app: FastAPI):
             logger.info("Moved %s non-sendable approved lead(s) to needs_attention", changed)
     finally:
         db.close()
-    yield
+
+    scheduler_stop = threading.Event()
+    scheduler_thread = threading.Thread(
+        target=run_automation_scheduler,
+        args=(scheduler_stop,),
+        name="supermerch-daily-automation",
+        daemon=True,
+    )
+    scheduler_thread.start()
+    try:
+        yield
+    finally:
+        scheduler_stop.set()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

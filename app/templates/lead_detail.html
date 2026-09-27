@@ -17,6 +17,9 @@
 <section class="panel">
   <div class="panel-head"><h2>Concept outreach</h2>
     <div class="actions">
+      <form method="post" action="/leads/{{ lead.id }}/regenerate-outreach">
+        <button class="button small ghost" type="submit">Nieuw concept</button>
+      </form>
       {% if mailto %}<a class="button small ghost" href="{{ mailto }}">Open in mail</a>{% endif %}
       {% if lead.status == 'approved' and zoho_connected and lead.email and lead.outreach_text %}
       <form method="post" action="/leads/{{ lead.id }}/send-zoho" onsubmit="return confirm('Deze e-mail nu echt versturen via Zoho Mail?')">
@@ -26,7 +29,7 @@
     </div>
   </div>
   {% if send_message %}<div class="notice {{ 'error' if send_error else '' }}">{{ send_message }}</div>{% endif %}
-  <div class="outreach">{{ lead.outreach_text or 'Nog geen concept gegenereerd.' }}</div>
+  <div class="outreach">{{ (lead.outreach_text or 'Nog geen concept gegenereerd.') | e | replace('\n', '<br>') | safe }}</div>
   {% if lead.status != 'approved' %}<p class="hint">Keur de lead eerst goed voordat verzenden via Zoho beschikbaar wordt.</p>{% endif %}
 </section>
 {% endblock %}

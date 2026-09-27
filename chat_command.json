@@ -1,0 +1,5 @@
+{
+  "command_id": "bootstrap-noop",
+  "action": "noop",
+  "payload": {}
+}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact">
+  <div><p class="eyebrow">CAMPAGNE</p><h1>{{ campaign.name }}</h1><p>{{ campaign.search_query }} · doel {{ campaign.target_count }} bedrijven</p></div>
+  <form method="post" action="/campaigns/{{ campaign.id }}/run"><button class="button" {% if campaign.status in ['running','queued'] %}disabled{% endif %}>{{ 'Bezig…' if campaign.status in ['running','queued'] else 'Start onderzoek' }}</button></form>
+</section>
+{% if campaign.status == 'error' %}<div class="notice error">De run stopte met een fout. Controleer de API-key of de Render-logs.</div>{% endif %}
+<section class="panel">
+  <div class="panel-head"><h2>Leads</h2><span class="badge {{ campaign.status }}">{{ campaign.status }}</span></div>
+  {% if leads %}<div class="table-wrap"><table><thead><tr><th>Score</th><th>Bedrijf</th><th>Waarom</th><th>Contact</th><th>Status</th></tr></thead><tbody>
+  {% for lead in leads %}<tr><td><span class="score small-score">{{ lead.score }}</span></td>
+  <td><a href="/leads/{{ lead.id }}"><strong>{{ lead.company_name }}</strong></a><br><small>{{ lead.domain }}</small></td>
+  <td>{{ lead.lead_reason or '—' }}</td><td>{{ lead.email or 'Nog niet gevonden' }}</td>
+  <td><span class="badge {{ lead.status }}">{{ lead.status }}</span></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty">Nog geen leads. Klik op <strong>Start onderzoek</strong>.</div>{% endif %}
+</section>
+{% endblock %}

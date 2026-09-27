@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div><p class="eyebrow">SUPERMERCH LEAD ENGINE</p><h1>Van internet naar gekwalificeerde leads.</h1><p>Zoek bedrijven, analyseer koopsignalen en houd alleen interessante prospects over.</p></div>
+  <a class="button" href="/campaigns/new">Nieuwe campagne</a>
+</section>
+
+<div class="setup">
+  <span class="{{ 'ok' if places_ready else 'warn' }}">Zoeken {{ 'gereed' if places_ready else 'API-key nodig' }}</span>
+  <span class="{{ 'ok' if ai_ready else 'muted' }}">AI {{ 'gereed' if ai_ready else 'fallback actief' }}</span>
+</div>
+
+<div class="stats">
+  <div class="stat"><span>Review</span><strong>{{ counts.get('ready_for_review', 0) }}</strong></div>
+  <div class="stat"><span>Goedgekeurd</span><strong>{{ counts.get('approved', 0) }}</strong></div>
+  <div class="stat"><span>Gecontacteerd</span><strong>{{ counts.get('contacted', 0) }}</strong></div>
+  <div class="stat"><span>Afgewezen</span><strong>{{ counts.get('rejected', 0) }}</strong></div>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2>Campagnes</h2></div>
+  {% if campaigns %}
+  <div class="table-wrap"><table><thead><tr><th>Campagne</th><th>Status</th><th>Leads</th><th>Laatste run</th></tr></thead><tbody>
+  {% for c in campaigns %}
+  <tr><td><a href="/campaigns/{{ c.id }}"><strong>{{ c.name }}</strong></a><br><small>{{ c.search_query }}</small></td>
+  <td><span class="badge {{ c.status }}">{{ c.status }}</span></td><td>{{ c.leads|length }}</td>
+  <td>{{ c.last_run_at.strftime('%d-%m %H:%M') if c.last_run_at else '—' }}</td></tr>
+  {% endfor %}</tbody></table></div>
+  {% else %}<div class="empty">Nog geen campagnes. Maak je eerste campagne aan.</div>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Beste nieuwe leads</h2></div>
+  {% if top_leads %}<div class="cards">
+    {% for lead in top_leads %}
+    <a class="lead-card" href="/leads/{{ lead.id }}"><div class="score">{{ lead.score }}</div><div><strong>{{ lead.company_name }}</strong><p>{{ lead.lead_reason or 'Nog geen reden' }}</p><small>{{ lead.recommended_offer or '' }}</small></div></a>
+    {% endfor %}
+  </div>{% else %}<div class="empty">Nog geen leads klaar voor review.</div>{% endif %}
+</section>
+{% endblock %}

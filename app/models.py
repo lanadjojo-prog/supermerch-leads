@@ -59,6 +59,18 @@ class Lead(Base):
     campaign: Mapped[Campaign] = relationship(back_populates="leads")
 
 
+class OutreachSend(Base):
+    __tablename__ = "outreach_sends"
+    __table_args__ = (UniqueConstraint("lead_id", name="uq_outreach_sends_lead"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(40), default="zoho")
+    recipient: Mapped[str] = mapped_column(String(220))
+    subject: Mapped[str] = mapped_column(String(300))
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class MailIntegration(Base):
     __tablename__ = "mail_integrations"
 

@@ -1,5 +1,10 @@
 {
-  "command_id": "bootstrap-noop",
-  "action": "noop",
-  "payload": {}
+  "command_id": "test-installatie-20260927-2030",
+  "action": "start_campaign",
+  "payload": {
+    "niche": "Installatiebedrijven",
+    "region": "Nederland",
+    "search_query": "installatiebedrijf",
+    "target_count": 3
+  }
 }

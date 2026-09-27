@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="lead-head"><div class="score big">{{ lead.score }}</div><div><p class="eyebrow">LEAD</p><h1>{{ lead.company_name }}</h1><p><a href="{{ lead.website }}" target="_blank" rel="noopener">{{ lead.domain }} ↗</a>{% if lead.address %} · {{ lead.address }}{% endif %}</p></div></section>
+<div class="grid2">
+<section class="panel"><h2>Waarom interessant?</h2><p class="lead-reason">{{ lead.lead_reason or 'Nog geen concrete reden.' }}</p><dl>
+<dt>Aanbod</dt><dd>{{ lead.recommended_offer or '—' }}</dd>
+<dt>Vacatures</dt><dd>{{ lead.vacancies_signal or '—' }}</dd>
+<dt>Employer branding</dt><dd>{{ lead.employer_branding_signal or '—' }}</dd>
+<dt>Groei</dt><dd>{{ lead.growth_signal or '—' }}</dd>
+<dt>Events</dt><dd>{{ lead.event_signal or '—' }}</dd>
+<dt>Merch zichtbaar</dt><dd>{{ lead.merch_signal or '—' }}</dd>
+</dl>{% if lead.score_reasons %}<pre class="reasons">{{ lead.score_reasons }}</pre>{% endif %}</section>
+<section class="panel"><h2>Contact</h2><dl><dt>Naam</dt><dd>{{ lead.contact_name or 'Nog niet gevonden' }}</dd><dt>Rol</dt><dd>{{ lead.contact_role or '—' }}</dd><dt>E-mail</dt><dd>{{ lead.email or 'Nog niet gevonden' }}</dd></dl>
+<div class="actions"><form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="approved"><button class="button">✓ Goedkeuren</button></form>
+<form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="rejected"><button class="button ghost">Afwijzen</button></form></div></section>
+</div>
+<section class="panel"><div class="panel-head"><h2>Concept outreach</h2>{% if mailto %}<a class="button small" href="{{ mailto }}">Open in mail</a>{% endif %}</div><div class="outreach">{{ lead.outreach_text or 'Nog geen concept gegenereerd.' }}</div></section>
+{% endblock %}

@@ -35,6 +35,9 @@ class Settings:
     auto_searches_per_run: int = _int_env("AUTO_SEARCHES_PER_RUN", 12)
     daily_job_token: str = os.getenv("DAILY_JOB_TOKEN", "")
     local_timezone: ZoneInfo = ZoneInfo(os.getenv("LOCAL_TIMEZONE", "Europe/Amsterdam"))
+    automation_enabled: bool = os.getenv("AUTOMATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    automation_start_hour: int = _int_env("AUTOMATION_START_HOUR", 9)
+    automation_end_hour: int = _int_env("AUTOMATION_END_HOUR", 19)
 
 
 settings = Settings()

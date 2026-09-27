@@ -25,6 +25,19 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        stale = db.scalars(select(Lead).where(Lead.status == "approved")).all()
+        changed = 0
+        for lead in stale:
+            if not lead.email or not lead.outreach_text:
+                lead.status = "needs_attention"
+                changed += 1
+        if changed:
+            db.commit()
+            logger.info("Moved %s non-sendable approved lead(s) to needs_attention", changed)
+    finally:
+        db.close()
     yield
 
 

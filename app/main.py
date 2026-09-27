@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from .auth import require_basic_auth
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .models import Campaign, Lead
+from .models import Campaign, Lead, MailIntegration
+from .services import zoho_mail
 from .services.pipeline import run_campaign
 
 
@@ -58,6 +59,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "app_name": settings.app_name,
         "places_ready": bool(settings.google_places_api_key),
         "ai_ready": bool(settings.openai_api_key),
+        "zoho_connected": zoho_mail.connected(db),
     })
 
 
@@ -135,8 +137,13 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
             f"mailto:{lead.email}?subject={quote_plus('Idee voor ' + lead.company_name)}"
             f"&body={quote_plus(lead.outreach_text)}"
         )
+    send_message = request.query_params.get("message")
+    send_error = request.query_params.get("error") == "1"
     return templates.TemplateResponse(request, "lead_detail.html", {
         "lead": lead, "mailto": mailto, "app_name": settings.app_name,
+        "zoho_connected": zoho_mail.connected(db),
+        "send_message": send_message,
+        "send_error": send_error,
     })
 
 
@@ -151,3 +158,95 @@ def set_lead_status(lead_id: int, status_value: str = Form(...), db: Session = D
     lead.status = status_value
     db.commit()
     return RedirectResponse(f"/leads/{lead_id}", status_code=303)
+
+
+
+@app.get("/integrations", response_class=HTMLResponse, dependencies=[Depends(auth)])
+def integrations(request: Request, db: Session = Depends(get_db)):
+    integration = db.scalar(select(MailIntegration).where(MailIntegration.provider == "zoho"))
+    return templates.TemplateResponse(request, "integrations.html", {
+        "app_name": settings.app_name,
+        "configured": zoho_mail.configured(),
+        "connected": integration is not None,
+        "integration": integration,
+        "redirect_uri": f"{settings.app_base_url}/integrations/zoho/callback",
+    })
+
+
+@app.get("/integrations/zoho/connect", dependencies=[Depends(auth)])
+def zoho_connect():
+    redirect_uri = f"{settings.app_base_url}/integrations/zoho/callback"
+    return RedirectResponse(zoho_mail.authorization_url(redirect_uri), status_code=302)
+
+
+@app.get("/integrations/zoho/callback", name="zoho_callback")
+def zoho_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    if error:
+        return RedirectResponse(
+            f"/integrations?error=1&message={quote_plus('Zoho toestemming is niet afgerond: ' + error)}",
+            status_code=303,
+        )
+    if not code or not state or not zoho_mail.validate_state(state):
+        return RedirectResponse(
+            f"/integrations?error=1&message={quote_plus('Ongeldige of verlopen Zoho-koppeling. Probeer opnieuw.')}",
+            status_code=303,
+        )
+    redirect_uri = f"{settings.app_base_url}/integrations/zoho/callback"
+    try:
+        token_payload = zoho_mail.exchange_code(code, redirect_uri)
+        integration = zoho_mail.save_connection(db, token_payload)
+        return RedirectResponse(
+            f"/integrations?message={quote_plus('Zoho Mail verbonden met ' + integration.email_address)}",
+            status_code=303,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            f"/integrations?error=1&message={quote_plus('Zoho koppelen mislukt: ' + str(exc))}",
+            status_code=303,
+        )
+
+
+@app.post("/integrations/zoho/disconnect", dependencies=[Depends(auth)])
+def zoho_disconnect(db: Session = Depends(get_db)):
+    zoho_mail.disconnect(db)
+    return RedirectResponse("/integrations", status_code=303)
+
+
+@app.post("/leads/{lead_id}/send-zoho", dependencies=[Depends(auth)])
+def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
+    lead = db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(404)
+    if lead.status != "approved":
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('Keur deze lead eerst goed.')}",
+            status_code=303,
+        )
+    if not lead.email or not lead.outreach_text:
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('E-mailadres of conceptmail ontbreekt.')}",
+            status_code=303,
+        )
+    try:
+        zoho_mail.send_email(
+            db,
+            to_address=lead.email,
+            subject=f"Idee voor {lead.company_name}",
+            content=lead.outreach_text,
+        )
+        lead.status = "contacted"
+        db.commit()
+        return RedirectResponse(
+            f"/leads/{lead_id}?message={quote_plus('E-mail is verzonden via Zoho Mail.')}",
+            status_code=303,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt: ' + str(exc))}",
+            status_code=303,
+        )

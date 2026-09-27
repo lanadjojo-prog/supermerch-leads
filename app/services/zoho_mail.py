@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import html
+import re
 import time
 from urllib.parse import urlencode
 
@@ -187,6 +189,19 @@ def disconnect(db: Session) -> None:
         db.commit()
 
 
+def _to_html_email(content: str) -> str:
+    clean = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", clean) if b.strip()]
+    html_blocks = []
+    for block in blocks:
+        safe = html.escape(block).replace("\n", "<br>")
+        html_blocks.append(
+            f'<p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;'
+            f'font-size:15px;line-height:1.6;color:#1f1f1f;">{safe}</p>'
+        )
+    return '<div style="max-width:640px;">' + "".join(html_blocks) + "</div>"
+
+
 def send_email(db: Session, to_address: str, subject: str, content: str) -> dict:
     row = db.scalar(select(MailIntegration).where(MailIntegration.provider == PROVIDER))
     if not row:
@@ -196,8 +211,8 @@ def send_email(db: Session, to_address: str, subject: str, content: str) -> dict
         "fromAddress": row.email_address,
         "toAddress": to_address,
         "subject": subject,
-        "content": content,
-        "mailFormat": "plaintext",
+        "content": _to_html_email(content),
+        "mailFormat": "html",
     }
     with httpx.Client(timeout=30) as client:
         response = client.post(

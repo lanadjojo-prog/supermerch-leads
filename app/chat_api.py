@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
@@ -10,6 +11,7 @@ from .services import zoho_mail
 from .services.pipeline import run_campaign
 
 router = APIRouter(prefix="/api/chat", tags=["chat-actions"])
+logger = logging.getLogger(__name__)
 
 
 def auth(request: Request):
@@ -108,10 +110,12 @@ def chat_send_approved(payload: CampaignScope, db: Session = Depends(get_db)):
             raise HTTPException(404, "Campaign not found")
         stmt = stmt.where(Lead.campaign_id == payload.campaign_id)
     leads = db.scalars(stmt.order_by(Lead.created_at.asc())).all()
-    sent = failed = 0
+    sent = needs_attention = send_failed = 0
     for lead in leads:
         if not lead.email or not lead.outreach_text:
-            failed += 1
+            lead.status = "needs_attention"
+            db.commit()
+            needs_attention += 1
             continue
         try:
             zoho_mail.send_email(
@@ -123,12 +127,18 @@ def chat_send_approved(payload: CampaignScope, db: Session = Depends(get_db)):
             lead.status = "contacted"
             db.commit()
             sent += 1
-        except Exception:
+        except Exception as exc:
             db.rollback()
-            failed += 1
+            failed_lead = db.get(Lead, lead.id)
+            if failed_lead:
+                failed_lead.status = "send_failed"
+                db.commit()
+            logger.exception("Zoho send failed for lead %s (%s): %s", lead.id, lead.company_name, exc)
+            send_failed += 1
     return {
-        "ok": failed == 0,
+        "ok": send_failed == 0 and needs_attention == 0,
         "sent": sent,
-        "failed": failed,
+        "needs_attention": needs_attention,
+        "send_failed": send_failed,
         "campaign_id": payload.campaign_id,
     }

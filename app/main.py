@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 from urllib.parse import quote, quote_plus
 
@@ -17,6 +18,8 @@ from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
 from .services.intelligence import generate_outreach
 from .services.pipeline import run_campaign
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -153,15 +156,36 @@ def send_all_approved_via_zoho(db: Session = Depends(get_db)):
     if not zoho_mail.connected(db): return RedirectResponse(f"/?error=1&message={quote_plus('Zoho Mail is niet verbonden.')}", status_code=303)
     leads = db.scalars(select(Lead).where(Lead.status == "approved").order_by(Lead.created_at.asc())).all()
     if not leads: return RedirectResponse(f"/?message={quote_plus('Er staan geen goedgekeurde mails klaar.')}", status_code=303)
-    sent = failed = 0
+    sent = needs_attention = send_failed = 0
     for lead in leads:
-        if not lead.email or not lead.outreach_text: failed += 1; continue
+        if not lead.email or not lead.outreach_text:
+            lead.status = "needs_attention"
+            db.commit()
+            needs_attention += 1
+            continue
         try:
             zoho_mail.send_email(db, to_address=lead.email, subject=f"Merchandise voor {lead.company_name}", content=lead.outreach_text)
-            lead.status = "contacted"; db.commit(); sent += 1
-        except Exception: db.rollback(); failed += 1
-    if failed: return RedirectResponse(f"/?error=1&message={quote_plus(f'{sent} mail(s) verzonden; {failed} niet verzonden en niet als gecontacteerd gemarkeerd.')}", status_code=303)
-    return RedirectResponse(f"/?message={quote_plus(f'{sent} goedgekeurde mail(s) succesvol via Zoho verzonden.')}", status_code=303)
+            lead.status = "contacted"
+            db.commit()
+            sent += 1
+        except Exception as exc:
+            db.rollback()
+            failed_lead = db.get(Lead, lead.id)
+            if failed_lead:
+                failed_lead.status = "send_failed"
+                db.commit()
+            logger.exception("Zoho send failed for lead %s (%s): %s", lead.id, lead.company_name, exc)
+            send_failed += 1
+    message = f"{sent} mail(s) verzonden"
+    if needs_attention:
+        message += f"; {needs_attention} naar Actie nodig"
+    if send_failed:
+        message += f"; {send_failed} naar Verzendfout"
+    message += "."
+    return RedirectResponse(
+        f"/?{'error=1&' if (needs_attention or send_failed) else ''}message={quote_plus(message)}",
+        status_code=303,
+    )
 
 
 @app.post("/leads/{lead_id}/send-zoho", dependencies=[Depends(auth)])
@@ -174,7 +198,14 @@ def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
         zoho_mail.send_email(db, to_address=lead.email, subject=f"Merchandise voor {lead.company_name}", content=lead.outreach_text)
         lead.status = "contacted"; db.commit()
         return RedirectResponse(f"/leads/{lead_id}?message={quote_plus('E-mail is verzonden via Zoho Mail.')}", status_code=303)
-    except Exception as exc: return RedirectResponse(f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt: ' + str(exc))}", status_code=303)
+    except Exception as exc:
+        db.rollback()
+        failed_lead = db.get(Lead, lead_id)
+        if failed_lead:
+            failed_lead.status = "send_failed"
+            db.commit()
+        logger.exception("Zoho send failed for lead %s (%s): %s", lead_id, lead.company_name, exc)
+        return RedirectResponse(f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt. De lead staat nu bij Verzendfout.')}", status_code=303)
 
 
 @app.post("/leads/{lead_id}/regenerate-outreach", dependencies=[Depends(auth)])

@@ -95,17 +95,15 @@ WEBSITECONTENT:
 
 
 def generate_outreach(company_name: str, contact_name: str | None, analysis: dict) -> str:
-    greeting = contact_name or "daar"
     if not settings.openai_api_key:
         return (
-            f"Hoi {greeting},\n\n"
-            f"Ik kwam {company_name} tegen en dacht dat ik je even een kort bericht zou sturen. "
-            "Met SuperMerch maken we custom kleding en merchandise voor bedrijven: "
-            "van T-shirts, hoodies en drinkware tot giveaways en andere branded items.\n\n"
-            "We denken flexibel mee en maken binnen 24 uur vrijblijvend een eerste ontwerpvoorstel "
-            "in jullie huisstijl.\n\n"
-            f"Zal ik eens iets voor {company_name} uitwerken?\n\n"
-            "Groet,\nGiovanni\nSuperMerch"
+            "Hi!\n\n"
+            f"Ik zag {company_name} voorbij komen en dacht: ik stuur gewoon even een kort berichtje.\n\n"
+            "Bij SuperMerch maken we kleding en merchandise voor bedrijven, van T-shirts en hoodies "
+            "tot drinkware en giveaways.\n\n"
+            "Om meteen iets concreets te laten zien, kunnen we binnen 24 uur vrijblijvend een eerste "
+            "ontwerpvoorstel in jullie huisstijl maken.\n\n"
+            f"Zou ik iets voor {company_name} kunnen uitwerken?"
         )
 
     from openai import OpenAI
@@ -115,19 +113,20 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
 Schrijf één korte Nederlandse eerste cold-outreachmail namens Giovanni van SuperMerch.
 
 Doel:
-- SuperMerch breed positioneren voor custom kleding en merchandise.
+- SuperMerch breed positioneren voor kleding en merchandise voor bedrijven.
 - Niet focussen op onboarding, vacatures of employer branding als aanbod.
-- Noem voorbeelden zoals kleding, drinkware, giveaways of andere branded items.
-- De kernbelofte is: flexibel meedenken + vrijblijvend binnen 24 uur een gratis eerste ontwerpvoorstel.
+- Noem voorbeelden zoals T-shirts, hoodies, drinkware en giveaways.
+- De kernbelofte is: binnen 24 uur vrijblijvend een eerste ontwerpvoorstel in de huisstijl van het bedrijf.
 
-Stijl:
-- 65-95 woorden.
-- Menselijk, direct en zakelijk informeel.
-- Geen marketingjargon, geen overdreven enthousiasme en geen slijmerige formuleringen.
+Stijl en vaste formulering:
+- Begin exact met: Hi!
+- Schrijf kort, menselijk, direct en zakelijk informeel.
+- Gebruik de formulering 'Bij SuperMerch maken we...' en niet 'Met SuperMerch'.
+- Geen marketingjargon, overdreven enthousiasme of slijmerige formuleringen.
 - Geen aannames dat het bedrijf merchandise nodig heeft.
-- Maximaal één concrete observatie uit de analyse, alleen als die echt nuttig en natuurlijk is.
-- Eindig met een simpele vraag of je iets voor het bedrijf mag uitwerken.
-- Gebruik nette alinea's en een losse handtekening.
+- Geen links, knoppen, trackingtekst of afmeldtekst in de mailbody.
+- Geen eigen handtekening toevoegen; de Zoho-handtekening staat los van deze gegenereerde tekst.
+- Eindig exact met: Zou ik iets voor {company_name} kunnen uitwerken?
 - Geef alleen de mailtekst terug, geen onderwerp en geen HTML.
 
 Bedrijf: {company_name}

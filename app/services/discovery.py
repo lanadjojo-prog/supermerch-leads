@@ -2,8 +2,11 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import httpx
+import logging
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,7 +52,13 @@ def discover_google_places(query: str, region: str, limit: int = 25) -> list[Dis
             if page_token:
                 payload["pageToken"] = page_token
             response = client.post(endpoint, headers=headers, json=payload)
-            response.raise_for_status()
+            if response.status_code >= 400:
+                try:
+                    detail = response.json()
+                except Exception:
+                    detail = response.text[:2000]
+                logger.error("Google Places error %s: %s", response.status_code, detail)
+                raise RuntimeError(f"Google Places gaf HTTP {response.status_code}. Controleer Places API (New), billing en API-keyrestricties.")
             data = response.json()
             for place in data.get("places", []):
                 website = place.get("websiteUri") or ""

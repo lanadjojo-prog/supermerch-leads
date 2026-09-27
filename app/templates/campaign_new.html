@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  <p class="eyebrow">NIEUWE CAMPAGNE</p><h1>Wie wil je vinden?</h1>
+  <form method="post" action="/campaigns" class="form">
+    <label>Doelgroep / niche<input name="niche" required placeholder="Bijv. Recruitment & detachering"></label>
+    <label>Regio<input name="region" required value="Nederland"></label>
+    <label>Zoekopdracht<input name="search_query" required placeholder="Bijv. recruitmentbureau"></label>
+    <label>Aantal bedrijven<input name="target_count" type="number" min="1" max="60" value="25"></label>
+    <button class="button" type="submit">Campagne aanmaken</button>
+  </form>
+  <p class="hint">De app vindt bedrijfswebsites, crawlt relevante pagina's en scoort automatisch de interessantste prospects.</p>
+</section>
+{% endblock %}

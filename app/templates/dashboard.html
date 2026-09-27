@@ -8,6 +8,7 @@
 <div class="setup">
   <span class="{{ 'ok' if places_ready else 'warn' }}">Zoeken {{ 'gereed' if places_ready else 'API-key nodig' }}</span>
   <span class="{{ 'ok' if ai_ready else 'muted' }}">AI {{ 'gereed' if ai_ready else 'fallback actief' }}</span>
+  <span class="{{ 'ok' if zoho_connected else 'muted' }}">Zoho Mail {{ 'verbonden' if zoho_connected else 'niet verbonden' }}</span>
 </div>
 
 <div class="stats">

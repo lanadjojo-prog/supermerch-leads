@@ -8,10 +8,12 @@
   <span class="{{ 'ok' if places_ready else 'warn' }}">Zoeken {{ 'gereed' if places_ready else 'API-key nodig' }}</span>
   <span class="{{ 'ok' if ai_ready else 'muted' }}">AI {{ 'gereed' if ai_ready else 'fallback actief' }}</span>
   <span class="{{ 'ok' if zoho_connected else 'muted' }}">Zoho Mail {{ 'verbonden' if zoho_connected else 'niet verbonden' }}</span>
+  <span class="{{ 'ok' if sent_today < daily_target else 'warn' }}">Automatisch {{ sent_today }}/{{ daily_target }} vandaag</span>
 </div>
 {% if request.query_params.get('message') %}<div class="notice ok">{{ request.query_params.get('message') }}</div>{% endif %}
 {% if request.query_params.get('error') == '1' %}<div class="notice warn">{{ request.query_params.get('message') }}</div>{% endif %}
 <div class="stats">
+  <div class="stat"><span>Vandaag verzonden</span><strong>{{ sent_today }} / {{ daily_target }}</strong></div>
   <div class="stat"><span>Review</span><strong>{{ counts.get('ready_for_review', 0) }}</strong></div>
   <div class="stat"><span>Goedgekeurd</span><strong>{{ counts.get('approved', 0) }}</strong></div>
   <div class="stat"><span>Gecontacteerd</span><strong>{{ counts.get('contacted', 0) }}</strong></div>

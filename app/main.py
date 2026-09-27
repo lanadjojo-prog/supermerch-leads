@@ -161,7 +161,6 @@ def set_lead_status(lead_id: int, status_value: str = Form(...), db: Session = D
     return RedirectResponse(f"/leads/{lead_id}", status_code=303)
 
 
-
 @app.get("/integrations", response_class=HTMLResponse, dependencies=[Depends(auth)])
 def integrations(request: Request, db: Session = Depends(get_db)):
     integration = db.scalar(select(MailIntegration).where(MailIntegration.provider == "zoho"))
@@ -218,6 +217,49 @@ def zoho_disconnect(db: Session = Depends(get_db)):
     return RedirectResponse("/integrations", status_code=303)
 
 
+@app.post("/leads/send-all-approved", dependencies=[Depends(auth)])
+def send_all_approved_via_zoho(db: Session = Depends(get_db)):
+    if not zoho_mail.connected(db):
+        return RedirectResponse(
+            f"/?error=1&message={quote_plus('Zoho Mail is niet verbonden.')}",
+            status_code=303,
+        )
+    leads = db.scalars(
+        select(Lead).where(Lead.status == "approved").order_by(Lead.created_at.asc())
+    ).all()
+    if not leads:
+        return RedirectResponse(
+            f"/?message={quote_plus('Er staan geen goedgekeurde mails klaar.')}",
+            status_code=303,
+        )
+
+    sent = 0
+    failed = 0
+    for lead in leads:
+        if not lead.email or not lead.outreach_text:
+            failed += 1
+            continue
+        try:
+            zoho_mail.send_email(
+                db,
+                to_address=lead.email,
+                subject=f"Merchandise voor {lead.company_name}",
+                content=lead.outreach_text,
+            )
+            lead.status = "contacted"
+            db.commit()
+            sent += 1
+        except Exception:
+            db.rollback()
+            failed += 1
+
+    if failed:
+        message = f"{sent} mail(s) verzonden; {failed} niet verzonden en niet als gecontacteerd gemarkeerd."
+        return RedirectResponse(f"/?error=1&message={quote_plus(message)}", status_code=303)
+    message = f"{sent} goedgekeurde mail(s) succesvol via Zoho verzonden."
+    return RedirectResponse(f"/?message={quote_plus(message)}", status_code=303)
+
+
 @app.post("/leads/{lead_id}/send-zoho", dependencies=[Depends(auth)])
 def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
     lead = db.get(Lead, lead_id)
@@ -251,7 +293,6 @@ def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
             f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt: ' + str(exc))}",
             status_code=303,
         )
-
 
 
 @app.post("/leads/{lead_id}/regenerate-outreach", dependencies=[Depends(auth)])

@@ -41,15 +41,15 @@ def heuristic_analysis(company_name: str, website_text: str, niche: str) -> dict
     growth = any(k in t for k in ("groei", "uitbreiden", "nieuwe vestiging", "we groeien", "join our team"))
     merch = any(k in t for k in ("merchandise", "bedrijfskleding", "teamkleding", "hoodie", "t-shirt", "polo"))
 
+    offer = "Custom kleding & merchandise in eigen huisstijl"
     if vacancies or employer:
-        offer = "Onboardingpakket of branded kleding voor medewerkers"
-        reason = "De website toont werving of employer-branding-signalen."
+        reason = "De website toont actieve werving of employer-branding-signalen."
     elif events:
-        offer = "Eventmerchandise en giveaways"
         reason = "De website toont event- of activatiesignalen."
+    elif growth:
+        reason = "De website toont een groei- of uitbreidingssignaal."
     else:
-        offer = "Bedrijfskleding en merchandise"
-        reason = "Het bedrijf past binnen de geselecteerde doelgroep, maar een sterk koopsignaal is nog niet bevestigd."
+        reason = "Het bedrijf past binnen de geselecteerde doelgroep."
 
     return {
         "industry": niche,
@@ -98,26 +98,41 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
     greeting = contact_name or "daar"
     if not settings.openai_api_key:
         return (
-            f"Hoi {greeting}, ik kwam {company_name} tegen en zag een mogelijke aansluiting met "
-            f"{analysis.get('recommended_offer') or 'merchandise in jullie huisstijl'}. "
-            f"{analysis.get('lead_reason') or ''} Als je wilt, maken we vrijblijvend binnen 24 uur "
-            "een eerste ontwerpvoorstel zodat je direct ziet hoe dit eruit kan zien. "
-            "Groet, Giovanni – SuperMerch"
-        ).strip()
+            f"Hoi {greeting},\n\n"
+            f"Ik kwam {company_name} tegen en dacht dat ik je even een kort bericht zou sturen. "
+            "Met SuperMerch maken we custom kleding en merchandise voor bedrijven: "
+            "van T-shirts, hoodies en drinkware tot giveaways en andere branded items.\n\n"
+            "We denken flexibel mee en maken binnen 24 uur vrijblijvend een eerste ontwerpvoorstel "
+            "in jullie huisstijl.\n\n"
+            f"Zal ik eens iets voor {company_name} uitwerken?\n\n"
+            "Groet,\nGiovanni\nSuperMerch"
+        )
 
     from openai import OpenAI
 
     client = OpenAI(api_key=settings.openai_api_key)
     prompt = f"""
-Schrijf een korte Nederlandse zakelijke eerste outreach namens Giovanni van SuperMerch.
-Maximaal 80 woorden. Natuurlijk, concreet, niet slijmerig, geen overdreven claims.
-Gebruik alleen onderstaande feiten. Noem maximaal één concrete observatie.
-Eindig met een laagdrempelig aanbod voor een gratis ontwerpvoorstel binnen 24 uur.
+Schrijf één korte Nederlandse eerste cold-outreachmail namens Giovanni van SuperMerch.
+
+Doel:
+- SuperMerch breed positioneren voor custom kleding en merchandise.
+- Niet focussen op onboarding, vacatures of employer branding als aanbod.
+- Noem voorbeelden zoals kleding, drinkware, giveaways of andere branded items.
+- De kernbelofte is: flexibel meedenken + vrijblijvend binnen 24 uur een gratis eerste ontwerpvoorstel.
+
+Stijl:
+- 65-95 woorden.
+- Menselijk, direct en zakelijk informeel.
+- Geen marketingjargon, geen overdreven enthousiasme en geen slijmerige formuleringen.
+- Geen aannames dat het bedrijf merchandise nodig heeft.
+- Maximaal één concrete observatie uit de analyse, alleen als die echt nuttig en natuurlijk is.
+- Eindig met een simpele vraag of je iets voor het bedrijf mag uitwerken.
+- Gebruik nette alinea's en een losse handtekening.
+- Geef alleen de mailtekst terug, geen onderwerp en geen HTML.
 
 Bedrijf: {company_name}
 Contact: {contact_name or 'onbekend'}
-Aanbod: {analysis.get('recommended_offer')}
-Aanleiding: {analysis.get('lead_reason')}
+Feitelijke aanleiding: {analysis.get('lead_reason')}
 Samenvatting: {analysis.get('company_summary')}
 """
     response = client.responses.create(model=settings.openai_model, input=prompt, store=False)

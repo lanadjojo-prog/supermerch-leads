@@ -10,6 +10,7 @@ from sqlalchemy import select, update
 from .database import SessionLocal
 from .models import Campaign, ChatCommand, Lead
 from .services import zoho_mail
+from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
 
 logger = logging.getLogger(__name__)
@@ -92,25 +93,27 @@ def process_startup_command() -> None:
                 stmt = stmt.where(Lead.campaign_id == int(campaign_id))
             leads = db.scalars(stmt.order_by(Lead.created_at.asc())).all()
             sent = failed = 0
+            limit_reached = False
             for lead in leads:
                 if not lead.email or not lead.outreach_text:
                     failed += 1
                     continue
                 try:
-                    zoho_mail.send_email(
-                        db,
-                        to_address=lead.email,
-                        subject=f"Merchandise voor {lead.company_name}",
-                        content=lead.outreach_text,
-                    )
-                    lead.status = "contacted"
-                    db.commit()
-                    sent += 1
+                    if send_lead(db, lead):
+                        sent += 1
+                except DailySendLimitReached:
+                    limit_reached = True
+                    break
                 except Exception:
-                    db.rollback()
                     failed += 1
             row.result = json.dumps(
-                {"sent": sent, "failed": failed, "campaign_id": campaign_id},
+                {
+                    "sent": sent,
+                    "failed": failed,
+                    "daily_limit_reached": limit_reached,
+                    "sent_today": sent_today(db),
+                    "campaign_id": campaign_id,
+                },
                 ensure_ascii=False,
             )
         else:

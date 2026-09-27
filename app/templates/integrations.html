@@ -5,6 +5,9 @@
 </section>
 
 <section class="panel narrow">
+  {% if request.query_params.get('message') %}
+  <div class="notice {{ 'error' if request.query_params.get('error') == '1' else '' }}">{{ request.query_params.get('message') }}</div>
+  {% endif %}
   {% if connected %}
     <div class="setup"><span class="ok">Verbonden</span></div>
     <h2>{{ integration.email_address }}</h2>

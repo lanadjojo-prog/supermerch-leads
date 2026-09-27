@@ -69,3 +69,15 @@ class MailIntegration(Base):
     refresh_token_encrypted: Mapped[str] = mapped_column(Text)
     connected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ChatCommand(Base):
+    __tablename__ = "chat_commands"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    command_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    action: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40), default="running")
+    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

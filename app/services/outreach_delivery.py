@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Lead, OutreachSend
+from ..models import ChatCommand, Lead
 from . import zoho_mail
 
 
@@ -32,23 +33,24 @@ def sent_today(db: Session) -> int:
     start_utc, end_utc = _today_utc_bounds()
 
     logged = db.scalar(
-        select(func.count(OutreachSend.id)).where(
-            OutreachSend.sent_at >= start_utc,
-            OutreachSend.sent_at < end_utc,
+        select(func.count(ChatCommand.id)).where(
+            ChatCommand.action == "outreach_send",
+            ChatCommand.status == "complete",
+            ChatCommand.finished_at >= start_utc,
+            ChatCommand.finished_at < end_utc,
         )
     ) or 0
 
-    # Backward-compatible protection for mails sent before the send-log table existed.
-    legacy = db.scalar(
+    contacted_today = db.scalar(
         select(func.count(Lead.id)).where(
             Lead.status == "contacted",
             Lead.updated_at >= start_utc,
             Lead.updated_at < end_utc,
-            ~exists(select(OutreachSend.id).where(OutreachSend.lead_id == Lead.id)),
         )
     ) or 0
 
-    return int(logged + legacy)
+    # Contacted rows cover legacy sends; send-log rows make new sends idempotent.
+    return int(max(logged, contacted_today))
 
 
 def remaining_today(db: Session) -> int:
@@ -56,7 +58,8 @@ def remaining_today(db: Session) -> int:
 
 
 def send_lead(db: Session, lead: Lead) -> bool:
-    if db.scalar(select(OutreachSend).where(OutreachSend.lead_id == lead.id)):
+    log_id = f"outreach-send-{lead.id}"
+    if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == log_id)):
         lead.status = "contacted"
         db.commit()
         return False
@@ -87,12 +90,20 @@ def send_lead(db: Session, lead: Lead) -> bool:
         raise
 
     db.add(
-        OutreachSend(
-            lead_id=lead.id,
-            provider="zoho",
-            recipient=lead.email,
-            subject=subject,
-            sent_at=datetime.utcnow(),
+        ChatCommand(
+            command_id=log_id,
+            action="outreach_send",
+            status="complete",
+            result=json.dumps(
+                {
+                    "lead_id": lead.id,
+                    "recipient": lead.email,
+                    "subject": subject,
+                    "provider": "zoho",
+                },
+                ensure_ascii=False,
+            ),
+            finished_at=datetime.utcnow(),
         )
     )
     lead.status = "contacted"

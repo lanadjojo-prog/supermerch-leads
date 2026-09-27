@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 
 def _int_env(name: str, default: int) -> int:
@@ -28,6 +29,12 @@ class Settings:
     default_country: str = os.getenv("DEFAULT_COUNTRY", "Nederland")
     crawl_timeout_seconds: int = _int_env("CRAWL_TIMEOUT_SECONDS", 12)
     max_crawl_pages: int = _int_env("MAX_CRAWL_PAGES", 5)
+    daily_send_target: int = _int_env("DAILY_SEND_TARGET", 30)
+    daily_send_batch: int = _int_env("DAILY_SEND_BATCH", 5)
+    auto_search_target: int = _int_env("AUTO_SEARCH_TARGET", 12)
+    auto_searches_per_run: int = _int_env("AUTO_SEARCHES_PER_RUN", 12)
+    daily_job_token: str = os.getenv("DAILY_JOB_TOKEN", "")
+    local_timezone: ZoneInfo = ZoneInfo(os.getenv("LOCAL_TIMEZONE", "Europe/Amsterdam"))
 
 
 settings = Settings()

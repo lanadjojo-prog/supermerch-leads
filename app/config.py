@@ -14,6 +14,7 @@ class Settings:
     app_name: str = os.getenv("APP_NAME", "SuperMerch Lead Engine")
     app_username: str = os.getenv("APP_USERNAME", "admin")
     app_password: str = os.getenv("APP_PASSWORD", "change-me")
+    app_base_url: str = os.getenv("APP_BASE_URL", "https://supermerch-leads.onrender.com").rstrip("/")
     session_secret: str = os.getenv("SESSION_SECRET", "dev-secret-change-me")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./supermerch_leads.db")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")

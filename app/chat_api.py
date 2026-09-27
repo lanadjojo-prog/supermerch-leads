@@ -5,6 +5,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .auth import require_basic_auth
+from .config import settings
 from .database import SessionLocal
 from .models import Campaign, Lead
 from .services import zoho_mail
@@ -56,7 +57,7 @@ def chat_status(db: Session = Depends(get_db)):
         "lead_counts": counts,
         "zoho_connected": zoho_mail.connected(db),
         "sent_today": sent_today(db),
-        "daily_send_target": 30,
+        "daily_send_target": settings.daily_send_target,
         "campaigns": [
             {"id": c.id, "name": c.name, "status": c.status, "target_count": c.target_count}
             for c in latest

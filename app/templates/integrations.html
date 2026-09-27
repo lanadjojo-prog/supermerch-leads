@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact">
+  <div><p class="eyebrow">KOPPELINGEN</p><h1>Zoho Mail</h1><p>Verstuur goedgekeurde outreach rechtstreeks vanuit je SuperMerch-mailbox.</p></div>
+</section>
+
+<section class="panel narrow">
+  {% if connected %}
+    <div class="setup"><span class="ok">Verbonden</span></div>
+    <h2>{{ integration.email_address }}</h2>
+    <p>Leads kunnen na goedkeuring met één extra bevestiging vanuit deze mailbox worden verstuurd.</p>
+    <form method="post" action="/integrations/zoho/disconnect" onsubmit="return confirm('Zoho Mail ontkoppelen?')">
+      <button class="button ghost" type="submit">Ontkoppelen</button>
+    </form>
+  {% elif configured %}
+    <div class="setup"><span class="warn">Nog niet verbonden</span></div>
+    <h2>Zoho is klaar om te koppelen</h2>
+    <p>Klik hieronder. Je wordt naar Zoho gestuurd om SuperMerch Lead Engine toestemming te geven.</p>
+    <a class="button" href="/integrations/zoho/connect">Verbind Zoho Mail</a>
+  {% else %}
+    <div class="setup"><span class="warn">Configuratie nodig</span></div>
+    <h2>Eerst één Zoho OAuth-client maken</h2>
+    <p>Maak in de Zoho API Console een <strong>Server-based application</strong> en gebruik exact deze redirect-URI:</p>
+    <pre class="reasons">{{ redirect_uri }}</pre>
+    <p>Voeg daarna in Render bij <strong>supermerch-leads → Environment</strong> toe:</p>
+    <pre class="reasons">ZOHO_CLIENT_ID
+ZOHO_CLIENT_SECRET
+ZOHO_FROM_ADDRESS=info@supermerch.nl</pre>
+    <p class="hint">De client secret hoort alleen in Render en niet in GitHub of deze chat.</p>
+  {% endif %}
+</section>
+{% endblock %}

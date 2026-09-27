@@ -8,6 +8,7 @@ from .auth import require_basic_auth
 from .database import SessionLocal
 from .models import Campaign, Lead
 from .services import zoho_mail
+from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
 
 router = APIRouter(prefix="/api/chat", tags=["chat-actions"])
@@ -54,6 +55,8 @@ def chat_status(db: Session = Depends(get_db)):
     return {
         "lead_counts": counts,
         "zoho_connected": zoho_mail.connected(db),
+        "sent_today": sent_today(db),
+        "daily_send_target": 30,
         "campaigns": [
             {"id": c.id, "name": c.name, "status": c.status, "target_count": c.target_count}
             for c in latest
@@ -117,13 +120,17 @@ def chat_approve_review(payload: CampaignScope, db: Session = Depends(get_db)):
 def chat_send_approved(payload: CampaignScope, db: Session = Depends(get_db)):
     if not zoho_mail.connected(db):
         raise HTTPException(409, "Zoho Mail is not connected")
+
     stmt = select(Lead).where(Lead.status == "approved")
     if payload.campaign_id is not None:
         if not db.get(Campaign, payload.campaign_id):
             raise HTTPException(404, "Campaign not found")
         stmt = stmt.where(Lead.campaign_id == payload.campaign_id)
+
     leads = db.scalars(stmt.order_by(Lead.created_at.asc())).all()
     sent = needs_attention = send_failed = 0
+    limit_reached = False
+
     for lead in leads:
         if not lead.email or not lead.outreach_text:
             lead.status = "needs_attention"
@@ -131,27 +138,21 @@ def chat_send_approved(payload: CampaignScope, db: Session = Depends(get_db)):
             needs_attention += 1
             continue
         try:
-            zoho_mail.send_email(
-                db,
-                to_address=lead.email,
-                subject=f"Merchandise voor {lead.company_name}",
-                content=lead.outreach_text,
-            )
-            lead.status = "contacted"
-            db.commit()
-            sent += 1
+            if send_lead(db, lead):
+                sent += 1
+        except DailySendLimitReached:
+            limit_reached = True
+            break
         except Exception as exc:
-            db.rollback()
-            failed_lead = db.get(Lead, lead.id)
-            if failed_lead:
-                failed_lead.status = "send_failed"
-                db.commit()
             logger.exception("Zoho send failed for lead %s (%s): %s", lead.id, lead.company_name, exc)
             send_failed += 1
+
     return {
         "ok": send_failed == 0 and needs_attention == 0,
         "sent": sent,
         "needs_attention": needs_attention,
         "send_failed": send_failed,
+        "daily_limit_reached": limit_reached,
+        "sent_today": sent_today(db),
         "campaign_id": payload.campaign_id,
     }

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import threading
 import logging
 from pathlib import Path
 from urllib.parse import quote, quote_plus
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .auth import require_basic_auth
 from .chat_api import router as chat_api_router
+from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration

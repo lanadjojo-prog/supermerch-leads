@@ -24,3 +24,9 @@ MVP voor het automatisch vinden, analyseren en prioriteren van B2B-leads voor Su
 - OPENAI_MODEL
 
 De automatische worker gebruikt alleen gekwalificeerde leads met een openbaar gevonden zakelijk e-mailadres en een gegenereerde outreachmail. Mislukte of overgeslagen leads tellen niet mee voor het dagdoel.
+
+## Dagelijkse automation
+
+De webservice voert tussen 09:00 en 19:00 Europe/Amsterdam maximaal één automation-run per uur uit.
+Elke run verstuurt maximaal 5 succesvolle mails en controleert altijd eerst de dagteller.
+Een GitHub Actions health-ping houdt de gratis Render-webservice alleen tijdens het dagvenster wakker.

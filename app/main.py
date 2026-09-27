@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,6 +14,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
+from .services.intelligence import generate_outreach
 from .services.pipeline import run_campaign
 
 
@@ -134,8 +135,8 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
     mailto = None
     if lead.email and lead.outreach_text:
         mailto = (
-            f"mailto:{lead.email}?subject={quote_plus('Idee voor ' + lead.company_name)}"
-            f"&body={quote_plus(lead.outreach_text)}"
+            f"mailto:{lead.email}?subject={quote('Merchandise voor ' + lead.company_name, safe='')}"
+            f"&body={quote(lead.outreach_text, safe='')}"
         )
     send_message = request.query_params.get("message")
     send_error = request.query_params.get("error") == "1"
@@ -236,7 +237,7 @@ def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
         zoho_mail.send_email(
             db,
             to_address=lead.email,
-            subject=f"Idee voor {lead.company_name}",
+            subject=f"Merchandise voor {lead.company_name}",
             content=lead.outreach_text,
         )
         lead.status = "contacted"
@@ -250,3 +251,30 @@ def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
             f"/leads/{lead_id}?error=1&message={quote_plus('Verzenden mislukt: ' + str(exc))}",
             status_code=303,
         )
+
+
+
+@app.post("/leads/{lead_id}/regenerate-outreach", dependencies=[Depends(auth)])
+def regenerate_lead_outreach(lead_id: int, db: Session = Depends(get_db)):
+    lead = db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(404)
+    analysis = {
+        "industry": lead.industry,
+        "company_summary": lead.company_summary,
+        "employee_signal": lead.employee_signal,
+        "vacancies_signal": lead.vacancies_signal,
+        "employer_branding_signal": lead.employer_branding_signal,
+        "event_signal": lead.event_signal,
+        "growth_signal": lead.growth_signal,
+        "merch_signal": lead.merch_signal,
+        "recommended_offer": "Custom kleding & merchandise in eigen huisstijl",
+        "lead_reason": lead.lead_reason,
+    }
+    lead.recommended_offer = "Custom kleding & merchandise in eigen huisstijl"
+    lead.outreach_text = generate_outreach(lead.company_name, lead.contact_name, analysis)
+    db.commit()
+    return RedirectResponse(
+        f"/leads/{lead_id}?message={quote_plus('Nieuw outreachconcept gemaakt.')}",
+        status_code=303,
+    )

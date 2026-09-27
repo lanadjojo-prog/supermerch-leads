@@ -10,6 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .auth import require_basic_auth
+from .chat_api import router as chat_api_router
 from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.include_router(chat_api_router)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -51,17 +53,8 @@ def health():
 def dashboard(request: Request, db: Session = Depends(get_db)):
     campaigns = db.scalars(select(Campaign).order_by(Campaign.created_at.desc())).all()
     counts = dict(db.execute(select(Lead.status, func.count(Lead.id)).group_by(Lead.status)).all())
-    top_leads = db.scalars(
-        select(Lead).where(Lead.status == "ready_for_review")
-        .order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)
-    ).all()
-    return templates.TemplateResponse(request, "dashboard.html", {
-        "campaigns": campaigns, "counts": counts, "top_leads": top_leads,
-        "app_name": settings.app_name,
-        "places_ready": bool(settings.google_places_api_key),
-        "ai_ready": bool(settings.openai_api_key),
-        "zoho_connected": zoho_mail.connected(db),
-    })
+    top_leads = db.scalars(select(Lead).where(Lead.status == "ready_for_review").order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)).all()
+    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db)})
 
 
 @app.get("/campaigns/new", response_class=HTMLResponse, dependencies=[Depends(auth)])
@@ -123,8 +116,7 @@ def set_lead_status(lead_id: int, status_value: str = Form(...), db: Session = D
 
 @app.post("/leads/approve-all-review", dependencies=[Depends(auth)])
 def approve_all_review(db: Session = Depends(get_db)):
-    result = db.execute(update(Lead).where(Lead.status == "ready_for_review").values(status="approved"))
-    db.commit()
+    result = db.execute(update(Lead).where(Lead.status == "ready_for_review").values(status="approved")); db.commit()
     count = result.rowcount or 0
     message = f"{count} lead(s) goedgekeurd." if count else "Er stonden geen leads klaar voor review."
     return RedirectResponse(f"/?message={quote_plus(message)}", status_code=303)

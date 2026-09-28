@@ -20,7 +20,7 @@ from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_scheduler, run_current_automation_slot
-from .services.daily_engine import run_daily_lead_engine
+from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -125,12 +125,56 @@ def run_automation_now(background_tasks: BackgroundTasks):
     )
 
 
+def _automation_status_payload(db: Session) -> dict:
+    sent = sent_today(db)
+    latest_auto = db.scalar(
+        select(Campaign)
+        .where(Campaign.name.like("AUTO %"))
+        .order_by(Campaign.created_at.desc())
+        .limit(1)
+    )
+    running = engine_is_running()
+    if sent >= settings.daily_send_target:
+        label = "Dagdoel bereikt"
+    elif running:
+        label = "Engine actief"
+    elif latest_auto is not None:
+        label = "Wacht op volgende run"
+    else:
+        label = "Nog niet gestart"
+
+    return {
+        "running": running,
+        "label": label,
+        "sent_today": sent,
+        "daily_target": settings.daily_send_target,
+        "remaining": max(0, settings.daily_send_target - sent),
+        "campaign": (
+            {
+                "id": latest_auto.id,
+                "name": latest_auto.name,
+                "status": latest_auto.status,
+                "lead_count": len(latest_auto.leads),
+                "last_run_at": latest_auto.last_run_at.isoformat() if latest_auto.last_run_at else None,
+            }
+            if latest_auto is not None
+            else None
+        ),
+    }
+
+
+@app.get("/api/automation/status", dependencies=[Depends(auth)])
+def automation_status(db: Session = Depends(get_db)):
+    return _automation_status_payload(db)
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(auth)])
 def dashboard(request: Request, db: Session = Depends(get_db)):
     campaigns = db.scalars(select(Campaign).order_by(Campaign.created_at.desc())).all()
     counts = dict(db.execute(select(Lead.status, func.count(Lead.id)).group_by(Lead.status)).all())
     top_leads = db.scalars(select(Lead).where(Lead.status == "ready_for_review").order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)).all()
-    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": sent_today(db), "daily_target": settings.daily_send_target})
+    status = _automation_status_payload(db)
+    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status})
 
 
 @app.get("/campaigns/new", response_class=HTMLResponse, dependencies=[Depends(auth)])

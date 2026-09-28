@@ -48,6 +48,29 @@ def _claim_hour_slot(db, slot_id: str) -> ChatCommand | None:
     return row
 
 
+
+def run_automation_pass(db) -> dict:
+    now_local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+
+    if not settings.automation_enabled:
+        return {"ok": True, "status": "automation_disabled"}
+
+    if not (
+        settings.automation_start_hour
+        <= now_local.hour
+        < settings.automation_end_hour
+    ):
+        return {
+            "ok": True,
+            "status": "outside_window",
+            "local_time": now_local.isoformat(),
+        }
+
+    result = run_daily_lead_engine(db)
+    logger.warning("Lead Engine pass result: %s", result)
+    return result
+
+
 def run_current_automation_slot(db) -> dict:
     now_local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
 
@@ -117,9 +140,9 @@ def run_automation_scheduler(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         db = SessionLocal()
         try:
-            run_current_automation_slot(db)
+            run_automation_pass(db)
         except Exception:
-            logger.exception("In-process automation tick failed")
+            logger.exception("In-process automation pass failed")
         finally:
             db.close()
-        stop_event.wait(60)
+        stop_event.wait(300)

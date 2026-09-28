@@ -116,6 +116,34 @@ def process_startup_command() -> None:
                 },
                 ensure_ascii=False,
             )
+        elif action == "send_direct_emails":
+            if not zoho_mail.connected(db):
+                raise RuntimeError("Zoho Mail is not connected")
+            emails = payload.get("emails") or []
+            if not isinstance(emails, list) or not emails:
+                raise ValueError("emails is required")
+            if len(emails) > 10:
+                raise ValueError("maximum 10 direct emails per command")
+            sent = []
+            failed = []
+            for item in emails:
+                to_address = str(item.get("to") or "").strip()
+                subject = str(item.get("subject") or "").strip()
+                content = str(item.get("content") or "").strip()
+                if not to_address or "@" not in to_address or not subject or not content:
+                    failed.append({"to": to_address, "error": "missing to/subject/content"})
+                    continue
+                try:
+                    zoho_mail.send_email(db, to_address, subject, content)
+                    sent.append(to_address)
+                except Exception as exc:
+                    logger.exception("Direct Zoho send failed for %s: %s", to_address, exc)
+                    failed.append({"to": to_address, "error": str(exc)[:300]})
+            row.result = json.dumps(
+                {"sent": sent, "failed": failed, "count_sent": len(sent), "count_failed": len(failed)},
+                ensure_ascii=False,
+            )
+
         else:
             raise ValueError(f"Unsupported action: {action}")
 

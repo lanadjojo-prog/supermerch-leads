@@ -10,3 +10,4 @@ beautifulsoup4==4.12.3
 openai>=1.109.0,<3
 python-dotenv==1.0.1
 cryptography>=43,<47
+PyJWT[crypto]>=2.10,<3

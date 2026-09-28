@@ -202,6 +202,22 @@ def _to_html_email(content: str) -> str:
     return '<div style="max-width:640px;">' + "".join(html_blocks) + "</div>"
 
 
+
+def _signature_html() -> str:
+    return (
+        '<div style="margin-top:24px;font-family:Arial,Helvetica,sans-serif;'
+        'font-size:14px;line-height:1.55;color:#1f1f1f;">'
+        '<p style="margin:0 0 14px 0;">Met vriendelijke groet / Kind regards,</p>'
+        '<p style="margin:0 0 14px 0;"><strong>Chris | Supermerch</strong><br>'
+        'Premium custom apparel &amp; merchandise</p>'
+        '<p style="margin:0;">'
+        '🌐 <a href="https://supermerch.nl" style="color:#1f1f1f;text-decoration:none;">supermerch.nl</a><br>'
+        '✉️ <a href="mailto:info@supermerch.nl" style="color:#1f1f1f;text-decoration:none;">info@supermerch.nl</a><br>'
+        '📸 <a href="https://www.instagram.com/supermerch.nl/" style="color:#1f1f1f;text-decoration:none;">@supermerch.nl</a>'
+        '</p></div>'
+    )
+
+
 def send_email(db: Session, to_address: str, subject: str, content: str) -> dict:
     row = db.scalar(select(MailIntegration).where(MailIntegration.provider == PROVIDER))
     if not row:
@@ -211,7 +227,7 @@ def send_email(db: Session, to_address: str, subject: str, content: str) -> dict
         "fromAddress": row.email_address,
         "toAddress": to_address,
         "subject": subject,
-        "content": _to_html_email(content),
+        "content": _to_html_email(content) + _signature_html(),
         "mailFormat": "html",
     }
     with httpx.Client(timeout=30) as client:

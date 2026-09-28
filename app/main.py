@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-import threading
 import logging
 from secrets import compare_digest
 from pathlib import Path
@@ -19,8 +18,9 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
-from .services.automation_scheduler import run_automation_scheduler
+from .services.automation_scheduler import run_current_automation_slot
 from .services.daily_engine import run_daily_lead_engine
+from .services.github_oidc import verify_github_actions_oidc
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -45,18 +45,7 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    scheduler_stop = threading.Event()
-    scheduler_thread = threading.Thread(
-        target=run_automation_scheduler,
-        args=(scheduler_stop,),
-        name="supermerch-daily-automation",
-        daemon=True,
-    )
-    scheduler_thread.start()
-    try:
-        yield
-    finally:
-        scheduler_stop.set()
+    yield
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -89,6 +78,17 @@ def internal_daily_lead_engine(request: Request, db: Session = Depends(get_db)):
     if not settings.daily_job_token or not compare_digest(token, settings.daily_job_token):
         raise HTTPException(401, "Unauthorized")
     return run_daily_lead_engine(db)
+
+
+@app.post("/api/internal/scheduled-lead-engine")
+def scheduled_daily_lead_engine(request: Request, db: Session = Depends(get_db)):
+    try:
+        verify_github_actions_oidc(request.headers.get("Authorization"))
+    except Exception:
+        logger.warning("Rejected scheduled lead-engine request with invalid GitHub OIDC token")
+        raise HTTPException(401, "Unauthorized")
+
+    return run_current_automation_slot(db)
 
 
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(auth)])

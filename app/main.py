@@ -20,6 +20,7 @@ from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_scheduler, run_current_automation_slot
+from .services.daily_engine import run_daily_lead_engine
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -102,6 +103,26 @@ def internal_daily_lead_engine(request: Request, db: Session = Depends(get_db)):
     if not settings.daily_job_token or not compare_digest(token, settings.daily_job_token):
         raise HTTPException(401, "Unauthorized")
     return run_current_automation_slot(db)
+
+
+def _run_daily_engine_now_background():
+    db = SessionLocal()
+    try:
+        result = run_daily_lead_engine(db)
+        logger.info("Manual Lead Engine run result: %s", result)
+    except Exception:
+        logger.exception("Manual Lead Engine run failed")
+    finally:
+        db.close()
+
+
+@app.post("/automation/run-now", dependencies=[Depends(auth)])
+def run_automation_now(background_tasks: BackgroundTasks):
+    background_tasks.add_task(_run_daily_engine_now_background)
+    return RedirectResponse(
+        f"/?message={quote_plus('Lead Engine gestart. De run verwerkt leads op de achtergrond.')}",
+        status_code=303,
+    )
 
 
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(auth)])

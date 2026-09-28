@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from .pipeline import run_campaign
 
 
 logger = logging.getLogger(__name__)
+_engine_run_lock = threading.Lock()
 
 
 def _auto_prefix(day_iso: str) -> str:
@@ -57,7 +59,7 @@ def _send_candidates(
     return sent, failed
 
 
-def run_daily_lead_engine(db: Session) -> dict:
+def _run_daily_lead_engine_impl(db: Session) -> dict:
     if not zoho_mail.connected(db):
         raise RuntimeError("Zoho Mail is niet verbonden.")
 
@@ -153,3 +155,13 @@ def run_daily_lead_engine(db: Session) -> dict:
             else "continue_next_scheduled_run"
         ),
     }
+
+
+def run_daily_lead_engine(db: Session) -> dict:
+    """Run at most one lead-engine pass at a time inside this service instance."""
+    if not _engine_run_lock.acquire(blocking=False):
+        return {"ok": True, "status": "already_running"}
+    try:
+        return _run_daily_lead_engine_impl(db)
+    finally:
+        _engine_run_lock.release()

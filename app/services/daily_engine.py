@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import threading
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -17,7 +16,6 @@ from .pipeline import run_campaign
 
 
 logger = logging.getLogger(__name__)
-_engine_run_lock = threading.Lock()
 _engine_run_lock = threading.Lock()
 
 
@@ -70,6 +68,12 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     already_sent = sent_today(db)
     remaining = max(0, settings.daily_send_target - already_sent)
 
+    logger.warning(
+        "Lead Engine run gestart: %s/%s vandaag verzonden",
+        already_sent,
+        settings.daily_send_target,
+    )
+
     if remaining <= 0:
         return {
             "ok": True,
@@ -116,6 +120,13 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             db.commit()
             db.refresh(campaign)
             searches_run += 1
+            logger.warning(
+                "AUTO campagne aangemaakt: id=%s | %s | %s | %s",
+                campaign.id,
+                category_name,
+                query,
+                region,
+            )
 
             try:
                 result = run_campaign(db, campaign)
@@ -140,7 +151,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             failed_sends += failed_now
 
     total_today = sent_today(db)
-    return {
+    result = {
         "ok": True,
         "date": day_iso,
         "sent_today": total_today,
@@ -157,16 +168,8 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             else "continue_next_scheduled_run"
         ),
     }
-
-
-def _run_daily_lead_engine_impl(db: Session) -> dict:
-    """Run at most one lead-engine pass at a time inside this service instance."""
-    if not _engine_run_lock.acquire(blocking=False):
-        return {"ok": True, "status": "already_running"}
-    try:
-        return _run_daily_lead_engine_impl(db)
-    finally:
-        _engine_run_lock.release()
+    logger.warning("Lead Engine run afgerond: %s", result)
+    return result
 
 
 def run_daily_lead_engine(db: Session) -> dict:

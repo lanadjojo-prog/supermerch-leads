@@ -45,6 +45,11 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    try:
+        process_startup_command()
+    except Exception:
+        logger.exception("Startup chat command failed")
+
     scheduler_stop = threading.Event()
     scheduler_thread = threading.Thread(
         target=run_automation_scheduler,

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import threading
 from secrets import compare_digest
 from pathlib import Path
 from urllib.parse import quote, quote_plus
@@ -18,7 +19,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
-from .services.automation_scheduler import run_current_automation_slot
+from .services.automation_scheduler import run_automation_scheduler, run_current_automation_slot
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -43,7 +44,18 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    yield
+    scheduler_stop = threading.Event()
+    scheduler_thread = threading.Thread(
+        target=run_automation_scheduler,
+        args=(scheduler_stop,),
+        name="supermerch-daily-automation",
+        daemon=True,
+    )
+    scheduler_thread.start()
+    try:
+        yield
+    finally:
+        scheduler_stop.set()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

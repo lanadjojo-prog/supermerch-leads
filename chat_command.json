@@ -1,5 +1,33 @@
 {
-  "command_id": "bootstrap-noop",
-  "action": "noop",
-  "payload": {}
+  "command_id": "supplier-inquiries-20260928-v1",
+  "action": "send_direct_emails",
+  "payload": {
+    "emails": [
+      {
+        "to": "support@tormino.com",
+        "subject": "Vraag over API, dropshipping en marketplace-verkoop",
+        "content": "Goedemiddag,\n\nIk ben momenteel aan het onderzoeken of we het assortiment van Tormino kunnen koppelen aan een geautomatiseerd verkoopplatform voor marketplaces zoals eBay.\n\nDaarvoor heb ik een paar praktische vragen:\n\n- Bieden jullie een API of productfeed met actuele prijzen, voorraad, EAN/SKU en productinformatie?\n- Kunnen bestellingen automatisch via API worden doorgestuurd?\n- Is dropshipping per stuk mogelijk, rechtstreeks naar de eindklant?\n- Worden pakketten neutraal verzonden, zonder jullie factuur of branding?\n- Is verkoop via marketplaces zoals eBay toegestaan?\n- Zijn er minimumafnames, abonnementskosten of andere vaste kosten?\n- Hoe worden prijs- en voorraadwijzigingen verwerkt?\n- Hoe werkt het retourproces bij dropshipping?\n- Zijn er limieten voor het aantal API-calls of producten dat we mogen synchroniseren?\n\nOns doel is om alleen producten aan te bieden die daadwerkelijk op voorraad zijn en waarbij bestelling en fulfilment zoveel mogelijk geautomatiseerd kunnen verlopen.\n\nAls jullie hiervoor documentatie, API-specificaties of voorwaarden hebben, ontvang ik die graag.\n\nAlvast bedankt!"
+      },
+      {
+        "to": "contact@andries.org",
+        "subject": "Vraag over API, dropshipping en marketplace-verkoop",
+        "content": "Goedemiddag,\n\nIk ben momenteel aan het onderzoeken of we het assortiment van Andriez Groothandel kunnen koppelen aan een geautomatiseerd verkoopplatform voor marketplaces zoals eBay.\n\nDaarvoor heb ik een paar praktische vragen:\n\n- Bieden jullie een API of productfeed met actuele prijzen, voorraad, EAN/SKU en productinformatie?\n- Kunnen bestellingen automatisch via API worden doorgestuurd?\n- Is dropshipping per stuk mogelijk, rechtstreeks naar de eindklant?\n- Worden pakketten neutraal verzonden, zonder jullie factuur of branding?\n- Is verkoop via marketplaces zoals eBay toegestaan?\n- Zijn er minimumafnames, abonnementskosten of andere vaste kosten?\n- Hoe worden prijs- en voorraadwijzigingen verwerkt?\n- Hoe werkt het retourproces bij dropshipping?\n- Zijn er limieten voor het aantal API-calls of producten dat we mogen synchroniseren?\n\nOns doel is om alleen producten aan te bieden die daadwerkelijk op voorraad zijn en waarbij bestelling en fulfilment zoveel mogelijk geautomatiseerd kunnen verlopen.\n\nAls jullie hiervoor documentatie, API-specificaties of voorwaarden hebben, ontvang ik die graag.\n\nAlvast bedankt!"
+      },
+      {
+        "to": "info@dropshipspecialist.nl",
+        "subject": "Vraag over API, dropshipping en marketplace-verkoop",
+        "content": "Goedemiddag,\n\nIk ben momenteel aan het onderzoeken of we het assortiment van Drobbs kunnen koppelen aan een geautomatiseerd verkoopplatform voor marketplaces zoals eBay.\n\nDaarvoor heb ik een paar praktische vragen:\n\n- Bieden jullie een API of productfeed met actuele prijzen, voorraad, EAN/SKU en productinformatie?\n- Kunnen bestellingen automatisch via API worden doorgestuurd?\n- Is dropshipping per stuk mogelijk, rechtstreeks naar de eindklant?\n- Worden pakketten neutraal verzonden, zonder jullie factuur of branding?\n- Is verkoop via marketplaces zoals eBay toegestaan?\n- Zijn er minimumafnames, abonnementskosten of andere vaste kosten?\n- Hoe worden prijs- en voorraadwijzigingen verwerkt?\n- Hoe werkt het retourproces bij dropshipping?\n- Zijn er limieten voor het aantal API-calls of producten dat we mogen synchroniseren?\n\nOns doel is om alleen producten aan te bieden die daadwerkelijk op voorraad zijn en waarbij bestelling en fulfilment zoveel mogelijk geautomatiseerd kunnen verlopen.\n\nAls jullie hiervoor documentatie, API-specificaties of voorwaarden hebben, ontvang ik die graag.\n\nAlvast bedankt!"
+      },
+      {
+        "to": "info@vendoro.nl",
+        "subject": "Vraag over API, dropshipping en marketplace-verkoop",
+        "content": "Goedemiddag,\n\nIk ben momenteel aan het onderzoeken of we het assortiment van Vendoro kunnen koppelen aan een geautomatiseerd verkoopplatform voor marketplaces zoals eBay.\n\nDaarvoor heb ik een paar praktische vragen:\n\n- Bieden jullie een API of productfeed met actuele prijzen, voorraad, EAN/SKU en productinformatie?\n- Kunnen bestellingen automatisch via API worden doorgestuurd?\n- Is dropshipping per stuk mogelijk, rechtstreeks naar de eindklant?\n- Worden pakketten neutraal verzonden, zonder jullie factuur of branding?\n- Is verkoop via marketplaces zoals eBay toegestaan?\n- Zijn er minimumafnames, abonnementskosten of andere vaste kosten?\n- Hoe worden prijs- en voorraadwijzigingen verwerkt?\n- Hoe werkt het retourproces bij dropshipping?\n- Zijn er limieten voor het aantal API-calls of producten dat we mogen synchroniseren?\n\nOns doel is om alleen producten aan te bieden die daadwerkelijk op voorraad zijn en waarbij bestelling en fulfilment zoveel mogelijk geautomatiseerd kunnen verlopen.\n\nAls jullie hiervoor documentatie, API-specificaties of voorwaarden hebben, ontvang ik die graag.\n\nAlvast bedankt!"
+      },
+      {
+        "to": "info@droppery.io",
+        "subject": "Vraag over API, leverancierskoppelingen en marketplace-verkoop",
+        "content": "Goedemiddag,\n\nIk onderzoek momenteel of we via Droppery meerdere leveranciers kunnen koppelen aan een geautomatiseerd verkoopplatform voor marketplaces zoals eBay.\n\nDaarvoor heb ik een paar praktische vragen:\n\n- Kunnen productdata, actuele prijzen en voorraad via API of feed worden opgehaald?\n- Kunnen bestellingen automatisch via API worden doorgestuurd naar aangesloten leveranciers?\n- Ondersteunen jullie verkoop via marketplaces zoals eBay?\n- Kunnen we filteren op leveranciers die dropshipping per stuk en white-label verzending ondersteunen?\n- Zijn EAN/SKU, verzendkosten en levertijden beschikbaar in de feed/API?\n- Hoe worden retouren afgehandeld bij aangesloten leveranciers?\n- Welke vaste kosten, abonnementen of transactiekosten gelden?\n- Zijn er API-limieten of beperkingen op het aantal producten dat we mogen synchroniseren?\n\nOns doel is om alleen producten aan te bieden die daadwerkelijk op voorraad zijn en waarbij orderverwerking en fulfilment zoveel mogelijk geautomatiseerd kunnen verlopen.\n\nAls jullie hiervoor technische documentatie of een overzicht van geschikte leveranciers hebben, ontvang ik dat graag.\n\nAlvast bedankt!"
+      }
+    ]
+  }
 }

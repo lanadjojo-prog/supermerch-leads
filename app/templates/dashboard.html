@@ -2,7 +2,12 @@
 {% block content %}
 <section class="hero">
   <div><p class="eyebrow">SUPERMERCH LEAD ENGINE</p><h1>Van internet naar gekwalificeerde leads.</h1><p>Zoek bedrijven, analyseer koopsignalen en houd alleen interessante prospects over.</p></div>
-  <a class="button" href="/campaigns/new">Nieuwe campagne</a>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <form method="post" action="/automation/run-now" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starten…';">
+      <button class="button" type="submit">Start Lead Engine nu</button>
+    </form>
+    <a class="button" href="/campaigns/new">Nieuwe campagne</a>
+  </div>
 </section>
 <div class="setup">
   <span class="{{ 'ok' if places_ready else 'warn' }}">Zoeken {{ 'gereed' if places_ready else 'API-key nodig' }}</span>

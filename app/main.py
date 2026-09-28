@@ -77,9 +77,23 @@ def auth(request: Request):
     require_basic_auth(request)
 
 
+def _run_current_automation_background():
+    db = SessionLocal()
+    try:
+        result = run_current_automation_slot(db)
+        logger.info("Health wake automation result: %s", result)
+    except Exception:
+        logger.exception("Health wake automation failed")
+    finally:
+        db.close()
+
+
 @app.get("/health")
-def health():
-    return {"ok": True}
+def health(background_tasks: BackgroundTasks):
+    # A health hit both wakes Render and immediately hands the current hour
+    # to the lead engine. The scheduler's hour-slot claim prevents duplicates.
+    background_tasks.add_task(_run_current_automation_background)
+    return {"ok": True, "automation_triggered": True}
 
 
 @app.post("/api/internal/daily-lead-engine")

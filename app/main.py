@@ -19,7 +19,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import Campaign, Lead, MailIntegration
 from .services import zoho_mail
-from .services.automation_scheduler import run_automation_scheduler, run_current_automation_slot
+from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -81,18 +81,19 @@ def auth(request: Request):
 def _run_current_automation_background():
     db = SessionLocal()
     try:
-        result = run_current_automation_slot(db)
-        logger.info("Health wake automation result: %s", result)
+        result = run_automation_pass(db)
+        logger.warning("Health wake Lead Engine result: %s", result)
     except Exception:
-        logger.exception("Health wake automation failed")
+        logger.exception("Health wake Lead Engine failed")
     finally:
         db.close()
 
 
 @app.get("/health")
 def health(background_tasks: BackgroundTasks):
-    # A health hit both wakes Render and immediately hands the current hour
-    # to the lead engine. The scheduler's hour-slot claim prevents duplicates.
+    # Every health hit wakes Render and immediately lets the engine continue.
+    # The engine lock prevents overlapping passes and the daily send limit
+    # prevents exceeding the configured target.
     background_tasks.add_task(_run_current_automation_background)
     return {"ok": True, "automation_triggered": True}
 
@@ -134,14 +135,20 @@ def _automation_status_payload(db: Session) -> dict:
         .limit(1)
     )
     running = engine_is_running()
+    from datetime import datetime, timezone
+    now_local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+    inside_window = (
+        settings.automation_enabled
+        and settings.automation_start_hour <= now_local.hour < settings.automation_end_hour
+    )
     if sent >= settings.daily_send_target:
         label = "Dagdoel bereikt"
     elif running:
         label = "Engine actief"
-    elif latest_auto is not None:
-        label = "Wacht op volgende run"
+    elif inside_window:
+        label = "Automatisch actief – volgende run binnen 5 min"
     else:
-        label = "Nog niet gestart"
+        label = "Automatisering gepauzeerd buiten het dagvenster"
 
     return {
         "running": running,

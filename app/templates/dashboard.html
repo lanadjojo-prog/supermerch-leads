@@ -15,6 +15,28 @@
   <span class="{{ 'ok' if zoho_connected else 'muted' }}">Zoho Mail {{ 'verbonden' if zoho_connected else 'niet verbonden' }}</span>
   <span class="{{ 'ok' if sent_today < daily_target else 'warn' }}">Automatisch {{ sent_today }}/{{ daily_target }} vandaag</span>
 </div>
+<section class="panel" id="automation-status-panel">
+  <div class="panel-head">
+    <div>
+      <p class="eyebrow">LIVE STATUS</p>
+      <h2 id="automation-status-label">{{ automation_status.label }}</h2>
+      <p id="automation-status-detail">
+        {% if automation_status.campaign %}
+          Laatste AUTO-campagne: <a id="automation-campaign-link" href="/campaigns/{{ automation_status.campaign.id }}">{{ automation_status.campaign.name }}</a>
+          · status <strong id="automation-campaign-status">{{ automation_status.campaign.status }}</strong>
+          · <span id="automation-campaign-leads">{{ automation_status.campaign.lead_count }}</span> leads
+        {% else %}
+          Nog geen automatische campagne aangemaakt.
+        {% endif %}
+      </p>
+    </div>
+    <div class="stat">
+      <span>Vandaag verzonden</span>
+      <strong id="automation-sent-count">{{ automation_status.sent_today }} / {{ automation_status.daily_target }}</strong>
+      <small id="automation-remaining">{{ automation_status.remaining }} resterend</small>
+    </div>
+  </div>
+</section>
 {% if request.query_params.get('message') %}<div class="notice ok">{{ request.query_params.get('message') }}</div>{% endif %}
 {% if request.query_params.get('error') == '1' %}<div class="notice warn">{{ request.query_params.get('message') }}</div>{% endif %}
 <div class="stats">
@@ -55,4 +77,32 @@
 </tbody></table></div>{% else %}<div class="empty">Nog geen campagnes. Maak je eerste campagne aan.</div>{% endif %}</section>
 <section class="panel"><div class="panel-head"><h2>Beste nieuwe leads</h2></div>
 {% if top_leads %}<div class="cards">{% for lead in top_leads %}<a class="lead-card" href="/leads/{{ lead.id }}"><div class="score">{{ lead.score }}</div><div><strong>{{ lead.company_name }}</strong><p>{{ lead.lead_reason or 'Nog geen reden' }}</p><small>{{ lead.recommended_offer or '' }}</small></div></a>{% endfor %}</div>{% else %}<div class="empty">Nog geen leads klaar voor review.</div>{% endif %}</section>
+<script>
+async function refreshAutomationStatus() {
+  try {
+    const response = await fetch("/api/automation/status", {cache: "no-store"});
+    if (!response.ok) return;
+    const data = await response.json();
+    const label = document.getElementById("automation-status-label");
+    const sent = document.getElementById("automation-sent-count");
+    const remaining = document.getElementById("automation-remaining");
+    const detail = document.getElementById("automation-status-detail");
+    if (label) label.textContent = data.label;
+    if (sent) sent.textContent = data.sent_today + " / " + data.daily_target;
+    if (remaining) remaining.textContent = data.remaining + " resterend";
+    if (detail) {
+      if (data.campaign) {
+        detail.innerHTML =
+          'Laatste AUTO-campagne: <a href="/campaigns/' + data.campaign.id + '">' +
+          data.campaign.name + '</a> · status <strong>' + data.campaign.status +
+          '</strong> · ' + data.campaign.lead_count + ' leads';
+      } else {
+        detail.textContent = "Nog geen automatische campagne aangemaakt.";
+      }
+    }
+  } catch (e) {}
+}
+setInterval(refreshAutomationStatus, 5000);
+refreshAutomationStatus();
+</script>
 {% endblock %}

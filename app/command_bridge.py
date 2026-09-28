@@ -39,8 +39,14 @@ def process_startup_command() -> None:
     row = None
     try:
         command_id = str(command["command_id"])
-        if db.scalar(select(ChatCommand).where(ChatCommand.command_id == command_id)):
-            logger.info("Chat command %s already processed", command_id)
+        existing = db.scalar(select(ChatCommand).where(ChatCommand.command_id == command_id))
+        if existing:
+            logger.warning(
+                "Chat command %s already processed: status=%s result=%s",
+                command_id,
+                existing.status,
+                existing.result,
+            )
             return
 
         row = ChatCommand(command_id=command_id, action=str(command["action"]), status="running")

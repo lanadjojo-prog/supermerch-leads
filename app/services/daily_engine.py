@@ -176,3 +176,7 @@ def run_daily_lead_engine(db: Session) -> dict:
         return _run_daily_lead_engine_impl(db)
     finally:
         _engine_run_lock.release()
+
+
+def engine_is_running() -> bool:
+    return _engine_run_lock.locked()

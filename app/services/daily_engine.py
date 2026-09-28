@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import threading
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from .pipeline import run_campaign
 
 
 logger = logging.getLogger(__name__)
+_engine_run_lock = threading.Lock()
 _engine_run_lock = threading.Lock()
 
 
@@ -157,8 +159,17 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     }
 
 
-def run_daily_lead_engine(db: Session) -> dict:
+def _run_daily_lead_engine_impl(db: Session) -> dict:
     """Run at most one lead-engine pass at a time inside this service instance."""
+    if not _engine_run_lock.acquire(blocking=False):
+        return {"ok": True, "status": "already_running"}
+    try:
+        return _run_daily_lead_engine_impl(db)
+    finally:
+        _engine_run_lock.release()
+
+
+def run_daily_lead_engine(db: Session) -> dict:
     if not _engine_run_lock.acquire(blocking=False):
         return {"ok": True, "status": "already_running"}
     try:

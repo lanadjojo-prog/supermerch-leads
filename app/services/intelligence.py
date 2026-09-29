@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 
@@ -94,45 +95,95 @@ WEBSITECONTENT:
     return _extract_json(response.output_text)
 
 
+
+def outreach_variant(company_name: str) -> str:
+    normalized = company_name.strip().lower().encode("utf-8")
+    bucket = hashlib.sha256(normalized).digest()[0] % 2
+    return "A" if bucket == 0 else "B"
+
+
+def outreach_subject(company_name: str, variant: str | None = None) -> str:
+    variant = variant or outreach_variant(company_name)
+    if variant == "A":
+        return f"Een idee voor {company_name}"
+    return f"Iets uitwerken voor {company_name}?"
+
+
 def generate_outreach(company_name: str, contact_name: str | None, analysis: dict) -> str:
+    variant = outreach_variant(company_name)
+    reason = str(analysis.get("lead_reason") or "").strip()
+    summary = str(analysis.get("company_summary") or "").strip()
+
     if not settings.openai_api_key:
+        if variant == "A":
+            return (
+                "Hi!\n\n"
+                f"Ik kwam {company_name} tegen en dacht dat ik je even een kort berichtje zou sturen.\n\n"
+                "Bij SuperMerch maken we custom kleding en merchandise voor bedrijven en teams. "
+                "Om meteen iets concreets te laten zien, kunnen we binnen 24 uur vrijblijvend een eerste "
+                "ontwerpvoorstel in jullie huisstijl maken.\n\n"
+                f"Zal ik iets voor {company_name} uitwerken?"
+            )
         return (
             "Hi!\n\n"
-            f"Ik zag {company_name} voorbij komen en dacht: ik stuur gewoon even een kort berichtje.\n\n"
-            "Bij SuperMerch maken we kleding en merchandise voor bedrijven, van T-shirts en hoodies "
-            "tot drinkware en giveaways.\n\n"
-            "Om meteen iets concreets te laten zien, kunnen we binnen 24 uur vrijblijvend een eerste "
-            "ontwerpvoorstel in jullie huisstijl maken.\n\n"
-            f"Zou ik iets voor {company_name} kunnen uitwerken?"
+            "Ik ben Chris van SuperMerch. Bij SuperMerch maken we custom kleding en merchandise voor "
+            "bedrijven en teams.\n\n"
+            "In plaats van meteen een offerte te sturen, laten we liever eerst iets zien: binnen 24 uur "
+            "kunnen we vrijblijvend een eerste ontwerpvoorstel in jullie huisstijl maken.\n\n"
+            f"Lijkt het je leuk als ik iets voor {company_name} laat uitwerken?"
         )
 
     from openai import OpenAI
 
     client = OpenAI(api_key=settings.openai_api_key)
+
+    if variant == "A":
+        variant_instruction = f"""
+VARIANT A — persoonlijke aanleiding:
+- Open na 'Hi!' met één korte, natuurlijke zin over het bedrijf.
+- Gebruik alleen een concrete aanleiding als die echt uit de feitelijke aanleiding/samenvatting blijkt.
+- Als de aanleiding generiek is (zoals 'past binnen doelgroep'), doe dan GEEN nep-personalisatie en schrijf gewoon dat je het bedrijf tegenkwam.
+- Positioneer daarna SuperMerch kort.
+- Benoem maximaal twee relevante productvoorbeelden; niet standaard vier categorieën opsommen.
+- Kernbelofte: binnen 24 uur vrijblijvend een eerste ontwerpvoorstel in hun huisstijl.
+- Eindig exact met: Zal ik iets voor {company_name} uitwerken?
+"""
+    else:
+        variant_instruction = f"""
+VARIANT B — direct design-first:
+- Open na 'Hi!' kort en direct vanuit Chris van SuperMerch.
+- Leg de nadruk op eerst iets laten zien in plaats van meteen verkopen of een offerte sturen.
+- Positioneer SuperMerch als maker van custom kleding en merchandise voor bedrijven en teams.
+- Benoem hooguit twee productvoorbeelden als dat natuurlijk past.
+- Kernbelofte: binnen 24 uur vrijblijvend een eerste ontwerpvoorstel in hun huisstijl.
+- Eindig exact met: Lijkt het je leuk als ik iets voor {company_name} laat uitwerken?
+"""
+
     prompt = f"""
-Schrijf één korte Nederlandse eerste cold-outreachmail namens Giovanni van SuperMerch.
+Schrijf één korte Nederlandse eerste cold-outreachmail namens Chris van SuperMerch.
 
 Doel:
-- SuperMerch breed positioneren voor kleding en merchandise voor bedrijven.
+- SuperMerch breed positioneren voor custom kleding en merchandise.
 - Niet focussen op onboarding, vacatures of employer branding als aanbod.
-- Noem voorbeelden zoals T-shirts, hoodies, drinkware en giveaways.
-- De kernbelofte is: binnen 24 uur vrijblijvend een eerste ontwerpvoorstel in de huisstijl van het bedrijf.
+- De mail moet voelen als een persoonlijk 1-op-1 bericht, niet als een bulkcampagne.
+- Maak geen claims of aannames die niet uit de aangeleverde feiten volgen.
+- De kernbelofte is een vrijblijvend eerste ontwerpvoorstel binnen 24 uur.
 
-Stijl en vaste formulering:
+Stijl:
 - Begin exact met: Hi!
 - Schrijf kort, menselijk, direct en zakelijk informeel.
-- Gebruik de formulering 'Bij SuperMerch maken we...' en niet 'Met SuperMerch'.
+- Gebruik 'Bij SuperMerch maken we...' wanneer je het bedrijf introduceert.
 - Geen marketingjargon, overdreven enthousiasme of slijmerige formuleringen.
-- Geen aannames dat het bedrijf merchandise nodig heeft.
 - Geen links, knoppen, trackingtekst of afmeldtekst in de mailbody.
-- Geen eigen handtekening toevoegen; de Zoho-handtekening staat los van deze gegenereerde tekst.
-- Eindig exact met: Zou ik iets voor {company_name} kunnen uitwerken?
+- Geen eigen handtekening toevoegen; de verzendlaag voegt de Chris | Supermerch-handtekening toe.
 - Geef alleen de mailtekst terug, geen onderwerp en geen HTML.
+
+{variant_instruction}
 
 Bedrijf: {company_name}
 Contact: {contact_name or 'onbekend'}
-Feitelijke aanleiding: {analysis.get('lead_reason')}
-Samenvatting: {analysis.get('company_summary')}
+Feitelijke aanleiding: {reason}
+Samenvatting: {summary}
 """
     response = client.responses.create(model=settings.openai_model, input=prompt, store=False)
     return response.output_text.strip()

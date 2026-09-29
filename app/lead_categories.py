@@ -54,10 +54,14 @@ LEAD_CATEGORIES: tuple[LeadCategory, ...] = (
 
 
 AUTO_REGIONS: tuple[str, ...] = (
-    "Amsterdam", "Rotterdam", "Den Haag", "Utrecht", "Eindhoven", "Tilburg",
-    "Breda", "Den Bosch", "Nijmegen", "Arnhem", "Apeldoorn", "Enschede",
-    "Zwolle", "Groningen", "Leeuwarden", "Maastricht", "Haarlem", "Alkmaar",
-    "Leiden", "Amersfoort", "Almere", "Dordrecht", "Roosendaal", "Nederland",
+    # Tijdelijk Brabant-zwaar: ongeveer twee derde van de rotatie zoekt in
+    # Noord-Brabant, terwijl de rest van Nederland wel actief blijft.
+    "Breda", "Tilburg", "Eindhoven", "Den Bosch", "Roosendaal",
+    "Oosterhout", "Waalwijk", "Helmond", "Oss", "Bergen op Zoom",
+    "Etten-Leur", "Veghel", "Veldhoven",
+    "Breda", "Tilburg", "Eindhoven", "Den Bosch", "Roosendaal",
+    "Amsterdam", "Rotterdam", "Den Haag", "Utrecht", "Nijmegen", "Arnhem",
+    "Apeldoorn", "Zwolle", "Maastricht", "Haarlem", "Dordrecht", "Nederland",
 )
 
 

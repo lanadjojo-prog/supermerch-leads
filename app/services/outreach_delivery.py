@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import ChatCommand, Lead
 from . import zoho_mail
+from .intelligence import outreach_subject, outreach_variant
 
 
 AMSTERDAM_TZ = ZoneInfo("Europe/Amsterdam")
@@ -72,7 +73,8 @@ def send_lead(db: Session, lead: Lead) -> bool:
     if not lead.email or not lead.outreach_text:
         raise ValueError("Lead heeft geen verzendklaar e-mailadres en outreachtekst.")
 
-    subject = f"Merchandise voor {lead.company_name}"
+    variant = outreach_variant(lead.company_name)
+    subject = outreach_subject(lead.company_name, variant)
 
     try:
         zoho_mail.send_email(
@@ -99,6 +101,7 @@ def send_lead(db: Session, lead: Lead) -> bool:
                     "lead_id": lead.id,
                     "recipient": lead.email,
                     "subject": subject,
+                    "ab_variant": variant,
                     "provider": "zoho",
                 },
                 ensure_ascii=False,

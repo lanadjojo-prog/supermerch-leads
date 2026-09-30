@@ -26,6 +26,7 @@ from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
 from .services.tender_radar import run_tender_scan_if_due_background
+from . import dropdesk_store
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     # Only schema creation is required synchronously; all nonessential work
     # runs in daemon threads after that.
     Base.metadata.create_all(bind=engine)
+    dropdesk_store.init_storage()
 
     def _startup_housekeeping():
         db = SessionLocal()
@@ -145,6 +147,36 @@ def health(background_tasks: BackgroundTasks):
         db.close()
 
     return {"ok": True, "automation_triggered": True, "tender_radar": tender}
+
+
+@app.post("/api/internal/dropdesk-storage")
+async def internal_dropdesk_storage(request: Request):
+    token = request.headers.get("X-Dropdesk-Storage-Key", "")
+    if not settings.dropdesk_storage_key or not compare_digest(token, settings.dropdesk_storage_key):
+        raise HTTPException(401, "Unauthorized")
+    if request.headers.get("content-length"):
+        try:
+            if int(request.headers["content-length"]) > 2_500_000:
+                raise HTTPException(413, "Payload too large")
+        except ValueError:
+            raise HTTPException(400, "Invalid content length")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON")
+    action = str(payload.get("action") or "")
+    try:
+        if action == "ping":
+            return {"ok": dropdesk_store.ping()}
+        if action == "get":
+            return {"value": dropdesk_store.get_record(payload.get("kind"), payload.get("id"))}
+        if action == "all":
+            return {"values": dropdesk_store.all_records(payload.get("kind"))}
+        if action == "batch":
+            return {"ok": True, "count": dropdesk_store.apply_ops(payload.get("ops") or [])}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    raise HTTPException(400, "Unsupported action")
 
 
 @app.post("/api/internal/daily-lead-engine")

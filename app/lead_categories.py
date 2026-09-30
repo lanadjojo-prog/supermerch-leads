@@ -53,6 +53,30 @@ LEAD_CATEGORIES: tuple[LeadCategory, ...] = (
 )
 
 
+PRIORITY_CATEGORY_NAMES: tuple[str, ...] = (
+    # Eerst de segmenten die in promo/merch-onderzoek groot zijn of voor
+    # SuperMerch een natuurlijke, herhaalbare kleding/merch-behoefte hebben.
+    "Bouw & techniek",
+    "Onderwijs",
+    "Industrie & productie",
+    "Transport & logistiek",
+    "Groothandel",
+    "Zorg",
+    "Recruitment & detachering",
+    "Zakelijke dienstverlening",
+    "Sportclubs",
+    "Sport & fitness",
+    "Studentenorganisaties",
+    "Verenigingen & communities",
+    "Events",
+    "Franchise & ketens",
+    "Horeca",
+    "Hospitality & verblijf",
+    "Entertainment",
+    "Toerisme & recreatie",
+)
+
+
 AUTO_REGIONS: tuple[str, ...] = (
     # Tijdelijk Brabant-zwaar: ongeveer twee derde van de rotatie zoekt in
     # Noord-Brabant, terwijl de rest van Nederland wel actief blijft.
@@ -66,16 +90,31 @@ AUTO_REGIONS: tuple[str, ...] = (
 
 
 def iter_daily_searches(day: date):
-    """Yield a deterministic, rotating nationwide search sequence for one day."""
+    """Yield high-intent categories first, with deterministic daily rotation."""
     seed = day.toordinal()
-    categories = LEAD_CATEGORIES
     regions = AUTO_REGIONS
-    category_offset = seed % len(categories)
+
+    by_name = {category.name: category for category in LEAD_CATEGORIES}
+    priority = [by_name[name] for name in PRIORITY_CATEGORY_NAMES if name in by_name]
+    remaining = [
+        category for category in LEAD_CATEGORIES
+        if category.name not in PRIORITY_CATEGORY_NAMES
+    ]
+
+    # Roteer binnen de sterke groep zodat niet altijd dezelfde sector bovenaan staat.
+    if priority:
+        priority_offset = seed % len(priority)
+        priority = priority[priority_offset:] + priority[:priority_offset]
+    if remaining:
+        other_offset = (seed * 3) % len(remaining)
+        remaining = remaining[other_offset:] + remaining[:other_offset]
+
+    categories = tuple(priority + remaining)
     region_offset = (seed * 7) % len(regions)
 
     for region_step in range(len(regions)):
         region = regions[(region_offset + region_step) % len(regions)]
         for category_step in range(len(categories)):
-            category = categories[(category_offset + category_step + region_step) % len(categories)]
+            category = categories[(category_step + region_step) % len(categories)]
             query = category.queries[(seed + region_step + category_step) % len(category.queries)]
             yield category.name, query, region

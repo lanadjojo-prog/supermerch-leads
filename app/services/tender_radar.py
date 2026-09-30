@@ -484,6 +484,14 @@ def run_tender_scan_if_due_background() -> None:
             .limit(1)
         )
         if latest and latest.finished_at and latest.finished_at > datetime.utcnow() - timedelta(hours=4):
+            logger.info(
+                "Tender scan skipped: recent complete run fetched=%s candidates=%s new=%s analyzed=%s finished=%s",
+                latest.fetched_count,
+                latest.candidate_count,
+                latest.new_count,
+                latest.analyzed_count,
+                latest.finished_at,
+            )
             return
         result = run_tender_scan(db)
         logger.info("Scheduled Tender scan result: %s", result)

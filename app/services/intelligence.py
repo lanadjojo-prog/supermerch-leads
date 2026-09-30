@@ -15,6 +15,13 @@ ANALYSIS_SCHEMA_HINT = {
     "event_signal": "yes/no",
     "growth_signal": "yes/no",
     "merch_signal": "yes/no",
+    "workwear_signal": "yes/no - werkkleding, bedrijfskleding, uniform of teamkleding expliciet zichtbaar",
+    "multi_location_signal": "yes/no - meerdere vestigingen of locaties expliciet zichtbaar",
+    "community_signal": "yes/no - leden, supporters, studenten, vrijwilligers of actieve community expliciet zichtbaar",
+    "sponsorship_signal": "yes/no - sponsoring, partnerschap of sponsoractivatie expliciet zichtbaar",
+    "recurring_event_signal": "yes/no - terugkerende events, toernooien, beurzen of activaties expliciet zichtbaar",
+    "anniversary_rebrand_signal": "yes/no - jubileum, rebranding, nieuwe huisstijl of opening expliciet zichtbaar",
+    "one_person_signal": "yes/no - duidelijke eenmanszaak/zzp/freelance onderneming",
     "recommended_offer": "concreet SuperMerch-aanbod of lege string",
     "lead_reason": "1 feitelijke reden waarom deze lead relevant is",
 }
@@ -40,7 +47,14 @@ def heuristic_analysis(company_name: str, website_text: str, niche: str) -> dict
     employer = any(k in t for k in ("employer branding", "werken bij", "ons team", "collega", "medewerker"))
     events = any(k in t for k in ("event", "beurs", "congres", "festival", "sponsoring"))
     growth = any(k in t for k in ("groei", "uitbreiden", "nieuwe vestiging", "we groeien", "join our team"))
-    merch = any(k in t for k in ("merchandise", "bedrijfskleding", "teamkleding", "hoodie", "t-shirt", "polo"))
+    merch = any(k in t for k in ("merchandise", "bedrijfskleding", "teamkleding", "hoodie", "t-shirt", "polo", "werkkleding", "uniform"))
+    workwear = any(k in t for k in ("bedrijfskleding", "teamkleding", "werkkleding", "uniform", "bedrijfspolo", "werkjas"))
+    multi_location = any(k in t for k in ("vestigingen", "onze locaties", "locaties", "filialen", "vestiging in"))
+    community = any(k in t for k in ("leden", "supporters", "vrijwilligers", "community", "studentenvereniging", "studievereniging"))
+    sponsorship = any(k in t for k in ("sponsor", "sponsoring", "partners", "partner van"))
+    recurring_event = any(k in t for k in ("jaarlijks", "ieder jaar", "toernooi", "beurs", "festival", "congres", "evenementen"))
+    anniversary_rebrand = any(k in t for k in ("jubileum", "jarig", "nieuwe huisstijl", "rebranding", "heropening", "opening"))
+    one_person = any(k in t for k in ("zzp", "zzp'er", "eenmanszaak", "freelancer", "freelance"))
 
     offer = "Custom kleding & merchandise in eigen huisstijl"
     if vacancies or employer:
@@ -61,6 +75,13 @@ def heuristic_analysis(company_name: str, website_text: str, niche: str) -> dict
         "event_signal": "yes" if events else "no",
         "growth_signal": "yes" if growth else "no",
         "merch_signal": "yes" if merch else "no",
+        "workwear_signal": "yes" if workwear else "no",
+        "multi_location_signal": "yes" if multi_location else "no",
+        "community_signal": "yes" if community else "no",
+        "sponsorship_signal": "yes" if sponsorship else "no",
+        "recurring_event_signal": "yes" if recurring_event else "no",
+        "anniversary_rebrand_signal": "yes" if anniversary_rebrand else "no",
+        "one_person_signal": "yes" if one_person else "no",
         "recommended_offer": offer,
         "lead_reason": reason,
     }
@@ -84,9 +105,16 @@ Geef uitsluitend geldige JSON terug met exact deze velden:
 {json.dumps(ANALYSIS_SCHEMA_HINT, ensure_ascii=False, indent=2)}
 
 Regels:
-- yes alleen als er een concreet signaal in de tekst staat.
-- recommended_offer moet praktisch zijn.
-- lead_reason moet verwijzen naar een concreet zichtbaar signaal.
+- yes alleen als er een concreet signaal letterlijk of ondubbelzinnig uit de websitecontent blijkt.
+- Maak onderscheid tussen algemene bedrijfsactiviteit en echte koopintentie voor kleding/merchandise.
+- Vacatures op zichzelf zijn GEEN sterk merchandise-signaal.
+- workwear_signal alleen bij expliciete werkkleding/bedrijfskleding/uniform/teamkleding.
+- multi_location_signal alleen bij expliciet meerdere vestigingen/locaties.
+- community_signal alleen bij expliciete leden/supporters/studenten/vrijwilligers/community.
+- recurring_event_signal alleen bij terugkerende events/toernooien/beurzen/activaties, niet bij één losse nieuwsvermelding.
+- one_person_signal alleen als duidelijk blijkt dat het een zzp'er/eenmanszaak/freelancer is.
+- recommended_offer moet praktisch zijn, maar telt niet als bewijs van koopintentie.
+- lead_reason moet de sterkste concrete aanleiding noemen; als die er niet is, zeg dat eerlijk.
 
 WEBSITECONTENT:
 {website_text[:30000]}

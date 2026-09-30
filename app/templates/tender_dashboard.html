@@ -4,7 +4,7 @@
   <div>
     <div class="eyebrow">SUPERMERCH · TENDER RADAR</div>
     <h1>Aanbestedingskansen</h1>
-    <p>Automatisch gefilterde TenderNed-opdrachten voor merchandise, kleding, promotieartikelen en relatiegeschenken.</p>
+    <p>Breed gescande TenderNed-opdrachten die mogelijk passen bij het volledige SuperMerch-assortiment. AI rangschikt ze op product-fit en commerciële haalbaarheid.</p>
   </div>
   <form method="post" action="/tenders/scan"><button class="button" type="submit">Scan TenderNed nu</button></form>
 </section>
@@ -23,7 +23,7 @@
     <div>
       <h2>{% if active_status %}Filter: {{ active_status }}{% else %}Alle kansen{% endif %}</h2>
       {% if latest_run %}
-      <small>Laatste scan: {{ latest_run.started_at.strftime('%d-%m-%Y %H:%M') }} · {{ latest_run.status }} · {{ latest_run.new_count or 0 }} nieuw van {{ latest_run.fetched_count or 0 }} publicaties</small>
+      <small>Laatste scan: {{ latest_run.started_at.strftime('%d-%m-%Y %H:%M') }} · {{ latest_run.status }} · {{ latest_run.new_count or 0 }} nieuw · {{ latest_run.candidate_count or 0 }} kandidaten uit {{ latest_run.fetched_count or 0 }} publicaties</small>
       {% endif %}
     </div>
     {% if active_status %}<a class="button ghost small" href="/tenders/">Filter wissen</a>{% endif %}

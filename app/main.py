@@ -32,28 +32,39 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Keep web-service startup fast so Render can see the listening port.
+    # Only schema creation is required synchronously; all nonessential work
+    # runs in daemon threads after that.
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        stale = db.scalars(select(Lead).where(Lead.status == "approved")).all()
-        changed = 0
-        for lead in stale:
-            if not lead.email or not lead.outreach_text:
-                lead.status = "needs_attention"
-                changed += 1
-        if changed:
-            db.commit()
-            logger.info("Moved %s non-sendable approved lead(s) to needs_attention", changed)
-    finally:
-        db.close()
 
-    try:
-        process_startup_command()
-    except Exception:
-        logger.exception("Startup chat command failed")
+    def _startup_housekeeping():
+        db = SessionLocal()
+        try:
+            stale = db.scalars(select(Lead).where(Lead.status == "approved")).all()
+            changed = 0
+            for lead in stale:
+                if not lead.email or not lead.outreach_text:
+                    lead.status = "needs_attention"
+                    changed += 1
+            if changed:
+                db.commit()
+                logger.info("Moved %s non-sendable approved lead(s) to needs_attention", changed)
+        except Exception:
+            logger.exception("Startup housekeeping failed")
+        finally:
+            db.close()
 
-    # Run Tender Radar once on each service start. The service itself skips
-    # the scan when a successful run completed less than four hours ago.
+        try:
+            process_startup_command()
+        except Exception:
+            logger.exception("Startup chat command failed")
+
+    threading.Thread(
+        target=_startup_housekeeping,
+        name="supermerch-startup-housekeeping",
+        daemon=True,
+    ).start()
+
     threading.Thread(
         target=run_tender_scan_if_due_background,
         name="supermerch-tender-radar-startup",

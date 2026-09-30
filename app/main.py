@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from .auth import require_basic_auth
 from .chat_api import router as chat_api_router
+from .tender_routes import router as tender_router
 from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
@@ -24,6 +25,7 @@ from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
+from .services.tender_radar import run_tender_scan_if_due_background
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(chat_api_router)
+app.include_router(tender_router)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -100,6 +103,7 @@ def health(background_tasks: BackgroundTasks):
     # The engine lock prevents overlapping passes and the daily send limit
     # prevents exceeding the configured target.
     background_tasks.add_task(_run_current_automation_background)
+    background_tasks.add_task(run_tender_scan_if_due_background)
     return {"ok": True, "automation_triggered": True}
 
 

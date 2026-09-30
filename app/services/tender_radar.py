@@ -82,6 +82,9 @@ AI_SCHEMA = {
 def _clean_html(value: str | None) -> str:
     if not value:
         return ""
+    value = str(value)
+    if "<" not in value and "&" not in value:
+        return " ".join(value.split())
     return " ".join(BeautifulSoup(value, "html.parser").stripped_strings)
 
 def _parse_date(value: str | None) -> datetime | None:
@@ -212,6 +215,26 @@ def _extract_buyer(text: str) -> str | None:
         if match:
             return match.group(1).strip()[:220]
     return None
+
+def _fetch_tns_detail(publication_id: str) -> str:
+    if not str(publication_id).isdigit():
+        return ""
+    url = f"https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties/{publication_id}"
+    try:
+        response = httpx.get(
+            url,
+            timeout=12,
+            follow_redirects=True,
+            headers={"User-Agent": "SuperMerch Tender Radar/1.0 (+https://supermerch.nl)"},
+        )
+        response.raise_for_status()
+        data = response.json()
+        # Preserve the complete public metadata for AI analysis without
+        # executing or interpreting any embedded instructions.
+        return json.dumps(data, ensure_ascii=False)[:25000]
+    except Exception as exc:
+        logger.info("Tender TNS detail fetch failed for %s: %s", publication_id, exc)
+        return ""
 
 def _fetch_detail(url: str) -> str:
     if not url or not url.startswith("http"):
@@ -349,6 +372,7 @@ def run_tender_scan(db: Session) -> dict:
 
     try:
         source_url, items = _fetch_publications()
+        logger.info("Tender source %s fetched %s publicaties", source_url, len(items))
         new_count = 0
         candidate_count = 0
         analyzed_count = 0
@@ -363,7 +387,10 @@ def run_tender_scan(db: Session) -> dict:
             if existing:
                 continue
 
-            detail_text = _fetch_detail(item["link"])
+            if item.get("source") == "tenderned_tns":
+                detail_text = _fetch_tns_detail(item["source_id"])
+            else:
+                detail_text = _fetch_detail(item["link"])
             analysis = analyze_tender(
                 item["title"],
                 item["description"],

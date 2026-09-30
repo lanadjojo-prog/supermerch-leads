@@ -19,6 +19,10 @@ from ..models import TenderOpportunity, TenderScanRun
 
 logger = logging.getLogger(__name__)
 
+TNS_URLS = [
+    "https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties?page=0&size=100",
+    "https://www.tenderned.nl/papi/tenderned-rs-tns/publicaties?page=0&size=100",
+]
 RSS_URLS = [
     "https://www.tenderned.nl/papi/tenderned-rs-tns/rss/laatste-publicatie.rss",
     "https://www.tenderned.nl/tenderned-rss-web/rss/laatste-publicatie.rss",
@@ -87,7 +91,11 @@ def _parse_date(value: str | None) -> datetime | None:
         dt = parsedate_to_datetime(value)
         return dt.replace(tzinfo=None) if dt.tzinfo else dt
     except Exception:
-        return None
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        except Exception:
+            return None
 
 def _text(node, tag: str) -> str:
     child = node.find(tag)
@@ -111,6 +119,77 @@ def _parse_feed(xml_text: str) -> list[dict]:
             "link": link[:1000],
             "description": description,
             "published_at": _parse_date(published),
+        })
+    return rows
+
+def _nested_label(value) -> str:
+    if isinstance(value, dict):
+        return str(value.get("omschrijving") or value.get("description") or value.get("code") or "")
+    return str(value or "")
+
+def _link_href(value) -> str:
+    if isinstance(value, dict):
+        return str(value.get("href") or "")
+    return str(value or "")
+
+def _parse_tns(payload) -> list[dict]:
+    if isinstance(payload, list):
+        publications = payload
+    elif isinstance(payload, dict):
+        publications = (
+            payload.get("contents")
+            or payload.get("content")
+            or payload.get("publicaties")
+            or []
+        )
+    else:
+        publications = []
+
+    rows = []
+    for pub in publications:
+        if not isinstance(pub, dict):
+            continue
+        publication_id = str(pub.get("publicatieId") or pub.get("id") or "").strip()
+        title = str(pub.get("aanbestedingNaam") or pub.get("titel") or "").strip()
+        buyer = str(pub.get("opdrachtgeverNaam") or pub.get("aanbestedendeDienst") or "").strip()
+        description = _clean_html(str(pub.get("opdrachtBeschrijving") or pub.get("beschrijving") or ""))
+        keywords = pub.get("trefwoorden")
+        if isinstance(keywords, list):
+            keyword_text = ", ".join(str(v) for v in keywords)
+        else:
+            keyword_text = str(keywords or "")
+        publication_type = _nested_label(pub.get("typePublicatie"))
+        contract_type = _nested_label(pub.get("typeOpdracht"))
+        procedure = _nested_label(pub.get("procedure"))
+        meta = " | ".join(v for v in (
+            f"Opdrachtgever: {buyer}" if buyer else "",
+            f"Trefwoorden: {keyword_text}" if keyword_text else "",
+            f"Publicatietype: {publication_type}" if publication_type else "",
+            f"Type opdracht: {contract_type}" if contract_type else "",
+            f"Procedure: {procedure}" if procedure else "",
+        ) if v)
+        combined_description = " | ".join(v for v in (description, meta) if v)
+
+        link = _link_href(pub.get("link"))
+        if link.startswith("/"):
+            link = "https://www.tenderned.nl" + link
+        if not link and publication_id:
+            link = f"https://www.tenderned.nl/aankondigingen/overzicht/{publication_id}"
+
+        if not title and not combined_description:
+            continue
+        source_id = publication_id or link or hashlib.sha256(
+            (title + str(pub.get("publicatieDatum") or "")).encode("utf-8")
+        ).hexdigest()
+        rows.append({
+            "source_id": source_id[:500],
+            "title": title[:500] or "Ongetitelde aanbesteding",
+            "link": link[:1000],
+            "description": combined_description[:12000],
+            "published_at": _parse_date(str(pub.get("publicatieDatum") or "")),
+            "deadline": _parse_date(str(pub.get("sluitingsDatum") or "")),
+            "buyer": buyer[:220] or None,
+            "source": "tenderned_tns",
         })
     return rows
 
@@ -225,19 +304,42 @@ BRONINHOUD:
     response = client.responses.create(model=settings.openai_model, input=prompt, store=False)
     return _extract_json(response.output_text)
 
-def _fetch_rss() -> tuple[str, list[dict]]:
+def _fetch_publications() -> tuple[str, list[dict]]:
+    headers = {"User-Agent": "SuperMerch Tender Radar/1.0 (+https://supermerch.nl)"}
     last_error = None
+
+    # Prefer TenderNed's public JSON publication service. It exposes richer
+    # fields than RSS and requires no account.
+    for url in TNS_URLS:
+        try:
+            response = httpx.get(url, timeout=25, follow_redirects=True, headers=headers)
+            response.raise_for_status()
+            items = _parse_tns(response.json())
+            if items:
+                return url, items
+            last_error = RuntimeError("TNS response bevatte geen publicaties")
+        except Exception as exc:
+            last_error = exc
+            logger.warning("Tender TNS failed %s: %s", url, exc)
+
+    # RSS remains a fallback because TenderNed publishes both interfaces.
     for url in RSS_URLS:
         try:
-            response = httpx.get(url, timeout=20, follow_redirects=True, headers={"User-Agent": "SuperMerch Tender Radar/1.0"})
+            response = httpx.get(url, timeout=20, follow_redirects=True, headers=headers)
             response.raise_for_status()
             items = _parse_feed(response.text)
             if items:
+                for item in items:
+                    item.setdefault("deadline", None)
+                    item.setdefault("buyer", None)
+                    item.setdefault("source", "tenderned_rss")
                 return url, items
+            last_error = RuntimeError("RSS response bevatte geen publicaties")
         except Exception as exc:
             last_error = exc
             logger.warning("Tender RSS failed %s: %s", url, exc)
-    raise RuntimeError(f"TenderNed RSS kon niet worden opgehaald: {last_error}")
+
+    raise RuntimeError(f"TenderNed kon via TNS of RSS niet worden opgehaald: {last_error}")
 
 def run_tender_scan(db: Session) -> dict:
     run = TenderScanRun(status="running", started_at=datetime.utcnow())
@@ -246,7 +348,7 @@ def run_tender_scan(db: Session) -> dict:
     db.refresh(run)
 
     try:
-        source_url, items = _fetch_rss()
+        source_url, items = _fetch_publications()
         new_count = 0
         candidate_count = 0
         analyzed_count = 0
@@ -276,9 +378,9 @@ def run_tender_scan(db: Session) -> dict:
             fit_label = str(analysis.get("fit_label") or "investigate")
             status = "interesting" if fit_label == "interesting" else ("investigate" if fit_label == "investigate" else "rejected")
 
-            deadline = None
+            deadline = item.get("deadline")
             raw_deadline = str(analysis.get("deadline") or "").strip()
-            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_deadline):
+            if not deadline and re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_deadline):
                 try:
                     deadline = datetime.strptime(raw_deadline, "%Y-%m-%d")
                 except ValueError:
@@ -289,11 +391,11 @@ def run_tender_scan(db: Session) -> dict:
                 source_id=item["source_id"],
                 source_url=item["link"] or source_url,
                 title=item["title"],
-                buyer=_extract_buyer(combined_text),
+                buyer=item.get("buyer") or _extract_buyer(combined_text),
                 description=item["description"][:12000],
                 published_at=item["published_at"],
                 deadline=deadline,
-                source="tenderned_rss",
+                source=item.get("source") or "tenderned",
                 status=status,
                 keyword_score=keyword_score,
                 keyword_matches=", ".join(matched[:20]),

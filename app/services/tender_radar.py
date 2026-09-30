@@ -599,9 +599,14 @@ def run_tender_scan_if_due_background() -> None:
             .order_by(TenderScanRun.finished_at.desc())
             .limit(1)
         )
-        if latest and latest.finished_at and latest.finished_at > datetime.utcnow() - timedelta(hours=4):
+        if (
+            latest
+            and latest.finished_at
+            and latest.finished_at > datetime.utcnow() - timedelta(hours=4)
+            and (latest.fetched_count or 0) >= 300
+        ):
             logger.info(
-                "Tender scan skipped: recent complete run fetched=%s candidates=%s new=%s analyzed=%s finished=%s",
+                "Tender scan skipped: recent broad run fetched=%s candidates=%s new=%s analyzed=%s finished=%s",
                 latest.fetched_count,
                 latest.candidate_count,
                 latest.new_count,

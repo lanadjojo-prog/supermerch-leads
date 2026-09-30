@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact">
+  <div>
+    <div class="eyebrow">SUPERMERCH · TENDER RADAR</div>
+    <h1>Aanbestedingskansen</h1>
+    <p>Automatisch gefilterde TenderNed-opdrachten voor merchandise, kleding, promotieartikelen en relatiegeschenken.</p>
+  </div>
+  <form method="post" action="/tenders/scan"><button class="button" type="submit">Scan TenderNed nu</button></form>
+</section>
+
+{% if message %}<div class="notice">{{ message }}</div>{% endif %}
+
+<div class="stats">
+  <a class="stat stat-link" href="/tenders/?status=interesting"><span>Interessant</span><strong>{{ counts.get('interesting', 0) }}</strong></a>
+  <a class="stat stat-link" href="/tenders/?status=investigate"><span>Onderzoeken</span><strong>{{ counts.get('investigate', 0) }}</strong></a>
+  <a class="stat stat-link" href="/tenders/?status=apply"><span>Inschrijven</span><strong>{{ counts.get('apply', 0) }}</strong></a>
+  <a class="stat stat-link" href="/tenders/"><span>Totaal gevonden</span><strong>{{ counts.values()|sum }}</strong></a>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>{% if active_status %}Filter: {{ active_status }}{% else %}Alle kansen{% endif %}</h2>
+      {% if latest_run %}
+      <small>Laatste scan: {{ latest_run.started_at.strftime('%d-%m-%Y %H:%M') }} · {{ latest_run.status }} · {{ latest_run.new_count or 0 }} nieuw van {{ latest_run.fetched_count or 0 }} publicaties</small>
+      {% endif %}
+    </div>
+    {% if active_status %}<a class="button ghost small" href="/tenders/">Filter wissen</a>{% endif %}
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Score</th><th>Opdracht</th><th>Opdrachtgever</th><th>Deadline</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for tender in opportunities %}
+        <tr>
+          <td><span class="score small-score">{{ tender.ai_score }}</span></td>
+          <td>
+            <a href="/tenders/{{ tender.id }}"><strong>{{ tender.title }}</strong></a><br>
+            <small>{{ (tender.why_fit or tender.ai_summary or tender.description)[:180] }}</small>
+          </td>
+          <td>{{ tender.buyer or '—' }}</td>
+          <td>{{ tender.deadline.strftime('%d-%m-%Y') if tender.deadline else '—' }}</td>
+          <td><span class="badge {{ tender.status }}">{{ tender.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty">Nog geen kansen. Start de eerste TenderNed-scan.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

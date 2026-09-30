@@ -71,7 +71,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
             continue
 
         analysed += 1
-        scored = score_lead(analysis)
+        scored = score_lead(analysis, campaign.niche)
         lead.score = scored.score
         lead.score_reasons = "\n".join(scored.reasons)
 
@@ -84,7 +84,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
 
         lead.email, lead.email_source_url = choose_best_email(crawl.emails)
 
-        if lead.score >= 60:
+        if scored.auto_eligible:
             lead.status = "ready_for_review"
             qualified += 1
             try:

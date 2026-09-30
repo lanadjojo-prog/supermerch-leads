@@ -81,3 +81,47 @@ class ChatCommand(Base):
     result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class TenderOpportunity(Base):
+    __tablename__ = "tender_opportunities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(500), unique=True, index=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    title: Mapped[str] = mapped_column(String(500))
+    buyer: Mapped[Optional[str]] = mapped_column(String(220), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    deadline: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    source: Mapped[str] = mapped_column(String(80), default="tenderned_rss")
+    status: Mapped[str] = mapped_column(String(40), default="new", index=True)
+    keyword_score: Mapped[int] = mapped_column(Integer, default=0)
+    keyword_matches: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    fit_label: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    why_fit: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    products: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    blockers: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    estimated_value: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    next_action: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TenderScanRun(Base):
+    __tablename__ = "tender_scan_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[str] = mapped_column(String(40), default="running", index=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    fetched_count: Mapped[int] = mapped_column(Integer, default=0)
+    candidate_count: Mapped[int] = mapped_column(Integer, default=0)
+    new_count: Mapped[int] = mapped_column(Integer, default=0)
+    analyzed_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

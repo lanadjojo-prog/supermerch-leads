@@ -52,6 +52,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Startup chat command failed")
 
+    # Run Tender Radar once on each service start. The service itself skips
+    # the scan when a successful run completed less than four hours ago.
+    threading.Thread(
+        target=run_tender_scan_if_due_background,
+        name="supermerch-tender-radar-startup",
+        daemon=True,
+    ).start()
+
     scheduler_stop = threading.Event()
     scheduler_thread = threading.Thread(
         target=run_automation_scheduler,

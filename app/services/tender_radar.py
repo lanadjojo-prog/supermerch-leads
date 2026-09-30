@@ -308,7 +308,7 @@ def _fetch_tns_detail(publication_id: str) -> str:
         # executing or interpreting any embedded instructions.
         return json.dumps(data, ensure_ascii=False)[:25000]
     except Exception as exc:
-        logger.info("Tender TNS detail fetch failed for %s: %s", publication_id, exc)
+        logger.warning("Tender TNS detail fetch failed for %s: %s", publication_id, exc)
         return ""
 
 def _fetch_detail(url: str) -> str:
@@ -327,7 +327,7 @@ def _fetch_detail(url: str) -> str:
             tag.decompose()
         return " ".join(soup.stripped_strings)[:25000]
     except Exception as exc:
-        logger.info("Tender detail fetch failed for %s: %s", url, exc)
+        logger.warning("Tender detail fetch failed for %s: %s", url, exc)
         return ""
 
 def _extract_json(text: str) -> dict:
@@ -434,7 +434,7 @@ def _fetch_publications() -> tuple[str, list[dict]]:
                 )
                 response.raise_for_status()
                 batch = _parse_tns(response.json())
-                logger.info("Tender TNS page=%s source=%s items=%s", page, base_url, len(batch))
+                logger.warning("Tender TNS page=%s source=%s items=%s", page, base_url, len(batch))
                 if not batch:
                     break
                 for item in batch:
@@ -477,7 +477,7 @@ def run_tender_scan(db: Session) -> dict:
 
     try:
         source_url, items = _fetch_publications()
-        logger.info("Tender source %s fetched %s publicaties", source_url, len(items))
+        logger.warning("Tender source %s fetched %s publicaties", source_url, len(items))
         new_count = 0
         analyzed_count = 0
 
@@ -493,7 +493,7 @@ def run_tender_scan(db: Session) -> dict:
         run.fetched_count = len(items)
         run.candidate_count = candidate_count
         db.commit()
-        logger.info("Tender broad filter found %s candidates from %s publicaties", candidate_count, len(items))
+        logger.warning("Tender broad filter found %s candidates from %s publicaties", candidate_count, len(items))
 
         for item, keyword_score, matched in candidates:
 
@@ -520,7 +520,7 @@ def run_tender_scan(db: Session) -> dict:
                 detail_text = _fetch_tns_detail(item["source_id"])
             else:
                 detail_text = _fetch_detail(item["link"])
-            logger.info("Tender analyzing source_id=%s keyword_score=%s title=%s", item["source_id"], keyword_score, item["title"][:120])
+            logger.warning("Tender analyzing source_id=%s keyword_score=%s title=%s", item["source_id"], keyword_score, item["title"][:120])
             analysis = analyze_tender(
                 item["title"],
                 item["description"],
@@ -601,7 +601,7 @@ def run_tender_scan_background() -> None:
     db = SessionLocal()
     try:
         result = run_tender_scan(db)
-        logger.info("Tender scan result: %s", result)
+        logger.warning("Tender scan result: %s", result)
     finally:
         db.close()
 
@@ -630,7 +630,7 @@ def run_tender_scan_if_due_background() -> None:
             )
             return
         result = run_tender_scan(db)
-        logger.info("Scheduled Tender scan result: %s", result)
+        logger.warning("Scheduled Tender scan result: %s", result)
     except Exception:
         logger.exception("Scheduled Tender scan failed")
     finally:

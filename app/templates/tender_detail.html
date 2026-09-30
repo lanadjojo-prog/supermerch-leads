@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact">
+  <div>
+    <div class="eyebrow">TENDER DOSSIER</div>
+    <h1>{{ tender.title }}</h1>
+    <p>{{ tender.buyer or 'Opdrachtgever nog niet uit feed gehaald' }}</p>
+  </div>
+  <div class="score big">{{ tender.ai_score }}</div>
+</section>
+
+{% if message %}<div class="notice">{{ message }}</div>{% endif %}
+
+<div class="grid2">
+  <section class="panel">
+    <h2>AI-analyse</h2>
+    <p class="lead-reason">{{ tender.why_fit or 'Nog geen toelichting beschikbaar.' }}</p>
+    <dl>
+      <dt>Status</dt><dd><span class="badge {{ tender.status }}">{{ tender.status }}</span></dd>
+      <dt>Gepubliceerd</dt><dd>{{ tender.published_at.strftime('%d-%m-%Y %H:%M') if tender.published_at else '—' }}</dd>
+      <dt>Deadline</dt><dd>{{ tender.deadline.strftime('%d-%m-%Y') if tender.deadline else '—' }}</dd>
+      <dt>Waarde</dt><dd>{{ tender.estimated_value or '—' }}</dd>
+      <dt>Keywordmatch</dt><dd>{{ tender.keyword_matches or '—' }}</dd>
+      <dt>Producten</dt><dd>{{ tender.products or '—' }}</dd>
+    </dl>
+    {% if tender.source_url %}<p><a class="button ghost small" href="{{ tender.source_url }}" target="_blank" rel="noopener">Open bron bij TenderNed</a></p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Volgende stap</h2>
+    <p>{{ tender.next_action or 'Controleer de aanbestedingsdocumenten.' }}</p>
+    <form class="form" method="post" action="/tenders/{{ tender.id }}/status">
+      <label>Status
+        <select name="status_value">
+          {% for value,label in [('interesting','Interessant'),('investigate','Onderzoeken'),('apply','Inschrijven'),('rejected','Afgevallen'),('archived','Archief')] %}
+          <option value="{{ value }}" {% if tender.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="button" type="submit">Status opslaan</button>
+    </form>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Samenvatting</h2>
+  <p>{{ tender.ai_summary or tender.description or '—' }}</p>
+</section>
+
+<div class="grid2">
+  <section class="panel">
+    <h2>Eisen</h2>
+    <div class="reasons">{{ tender.requirements or 'Nog geen specifieke eisen uit de openbare tekst gehaald.' }}</div>
+  </section>
+  <section class="panel">
+    <h2>Blokkers / controleren</h2>
+    <div class="reasons">{{ tender.blockers or 'Geen specifieke blokkades gevonden; documenten handmatig controleren.' }}</div>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Brontekst</h2>
+  <div class="outreach tender-source">{{ tender.raw_text or tender.description }}</div>
+</section>
+{% endblock %}

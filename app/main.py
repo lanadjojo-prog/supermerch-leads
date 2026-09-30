@@ -18,7 +18,7 @@ from .tender_routes import router as tender_router
 from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .models import Campaign, Lead, MailIntegration
+from .models import Campaign, Lead, MailIntegration, TenderOpportunity, TenderScanRun
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
@@ -118,12 +118,33 @@ def _run_current_automation_background():
 
 @app.get("/health")
 def health(background_tasks: BackgroundTasks):
-    # Every health hit wakes Render and immediately lets the engine continue.
-    # The engine lock prevents overlapping passes and the daily send limit
-    # prevents exceeding the configured target.
+    # Every health hit wakes Render and immediately lets the engines continue.
     background_tasks.add_task(_run_current_automation_background)
     background_tasks.add_task(run_tender_scan_if_due_background)
-    return {"ok": True, "automation_triggered": True}
+
+    db = SessionLocal()
+    try:
+        latest = db.scalar(select(TenderScanRun).order_by(TenderScanRun.started_at.desc()).limit(1))
+        opportunity_count = db.scalar(select(func.count(TenderOpportunity.id))) or 0
+        tender = (
+            {
+                "status": latest.status,
+                "fetched": latest.fetched_count,
+                "candidates": latest.candidate_count,
+                "new": latest.new_count,
+                "analyzed": latest.analyzed_count,
+                "error": latest.error,
+                "started_at": latest.started_at.isoformat() if latest.started_at else None,
+                "finished_at": latest.finished_at.isoformat() if latest.finished_at else None,
+                "opportunities_total": opportunity_count,
+            }
+            if latest
+            else {"status": "not_started", "opportunities_total": opportunity_count}
+        )
+    finally:
+        db.close()
+
+    return {"ok": True, "automation_triggered": True, "tender_radar": tender}
 
 
 @app.post("/api/internal/daily-lead-engine")

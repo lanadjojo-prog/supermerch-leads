@@ -273,7 +273,10 @@ def _keyword_score(title: str, description: str) -> tuple[int, list[str]]:
     matched = []
     score = 0
     for keyword, weight in KEYWORDS.items():
-        if keyword in haystack:
+        # Match complete words/phrases instead of raw substrings.
+        # This prevents short product terms such as "tas" from matching "status".
+        pattern = r"(?<!\\w)" + re.escape(keyword.lower()) + r"(?!\\w)"
+        if re.search(pattern, haystack):
             matched.append(keyword)
             score += weight
     return min(score, 100), matched
@@ -425,12 +428,13 @@ def _fetch_publications() -> tuple[str, list[dict]]:
                 response = httpx.get(
                     base_url,
                     params={"page": page, "size": TNS_PAGE_SIZE},
-                    timeout=25,
+                    timeout=10,
                     follow_redirects=True,
                     headers=headers,
                 )
                 response.raise_for_status()
                 batch = _parse_tns(response.json())
+                logger.info("Tender TNS page=%s source=%s items=%s", page, base_url, len(batch))
                 if not batch:
                     break
                 for item in batch:
@@ -475,15 +479,23 @@ def run_tender_scan(db: Session) -> dict:
         source_url, items = _fetch_publications()
         logger.info("Tender source %s fetched %s publicaties", source_url, len(items))
         new_count = 0
-        candidate_count = 0
         analyzed_count = 0
 
+        candidates = []
         for item in items:
             keyword_score, matched = _keyword_score(item["title"], item["description"])
             # Broad intake: one credible SuperMerch signal is enough to reach AI review.
-            if keyword_score < 8:
-                continue
-            candidate_count += 1
+            if keyword_score >= 8:
+                candidates.append((item, keyword_score, matched))
+
+        candidate_count = len(candidates)
+        run.source_url = source_url
+        run.fetched_count = len(items)
+        run.candidate_count = candidate_count
+        db.commit()
+        logger.info("Tender broad filter found %s candidates from %s publicaties", candidate_count, len(items))
+
+        for item, keyword_score, matched in candidates:
 
             existing = db.scalar(select(TenderOpportunity).where(TenderOpportunity.source_id == item["source_id"]))
 
@@ -508,6 +520,7 @@ def run_tender_scan(db: Session) -> dict:
                 detail_text = _fetch_tns_detail(item["source_id"])
             else:
                 detail_text = _fetch_detail(item["link"])
+            logger.info("Tender analyzing source_id=%s keyword_score=%s title=%s", item["source_id"], keyword_score, item["title"][:120])
             analysis = analyze_tender(
                 item["title"],
                 item["description"],
@@ -516,6 +529,8 @@ def run_tender_scan(db: Session) -> dict:
                 matched,
             )
             analyzed_count += 1
+            run.analyzed_count = analyzed_count
+            db.commit()
 
             fit_score = int(analysis.get("fit_score") or keyword_score)
             fit_score = max(0, min(100, fit_score))

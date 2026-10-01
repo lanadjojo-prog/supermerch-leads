@@ -47,16 +47,23 @@ def heuristic_analysis(company_name: str, website_text: str, niche: str) -> dict
     employer = any(k in t for k in ("employer branding", "werken bij", "ons team", "collega", "medewerker"))
     events = any(k in t for k in ("event", "beurs", "congres", "festival", "sponsoring"))
     growth = any(k in t for k in ("groei", "uitbreiden", "nieuwe vestiging", "we groeien", "join our team"))
-    merch = any(k in t for k in ("merchandise", "bedrijfskleding", "teamkleding", "hoodie", "t-shirt", "polo", "werkkleding", "uniform"))
+    merch = any(k in t for k in ("merchandise", "bedrijfskleding", "teamkleding", "hoodie", "t-shirt", "polo", "werkkleding", "uniform", "supporterssjaal", "sjaal", "fanwear", "clubkleding", "carnavalskleding"))
     workwear = any(k in t for k in ("bedrijfskleding", "teamkleding", "werkkleding", "uniform", "bedrijfspolo", "werkjas"))
     multi_location = any(k in t for k in ("vestigingen", "onze locaties", "locaties", "filialen", "vestiging in"))
-    community = any(k in t for k in ("leden", "supporters", "vrijwilligers", "community", "studentenvereniging", "studievereniging"))
+    community = any(k in t for k in ("leden", "supporters", "supportersvereniging", "supportersclub", "fanclub", "vrijwilligers", "community", "studentenvereniging", "studievereniging", "carnavalsvereniging", "carnavalsstichting"))
     sponsorship = any(k in t for k in ("sponsor", "sponsoring", "partners", "partner van"))
-    recurring_event = any(k in t for k in ("jaarlijks", "ieder jaar", "toernooi", "beurs", "festival", "congres", "evenementen"))
-    anniversary_rebrand = any(k in t for k in ("jubileum", "jarig", "nieuwe huisstijl", "rebranding", "heropening", "opening"))
+    recurring_event = any(k in t for k in ("jaarlijks", "ieder jaar", "toernooi", "beurs", "festival", "congres", "evenementen", "carnaval", "optocht", "lustrum", "jubileumfeest"))
+    anniversary_rebrand = any(k in t for k in ("jubileum", "lustrum", "lustrumjaar", "jubileumcommissie", "jarig", "nieuwe huisstijl", "rebranding", "heropening", "opening"))
     one_person = any(k in t for k in ("zzp", "zzp'er", "eenmanszaak", "freelancer", "freelance"))
 
-    offer = "Custom kleding & merchandise in eigen huisstijl"
+    if niche == "Carnaval & optochten":
+        offer = "Carnavalsmerch zoals shirts, hoodies, sjaals, pins en accessoires in eigen ontwerp"
+    elif niche == "Sport fanclubs & supporters":
+        offer = "Supportersmerch zoals sjaals, shirts, hoodies, caps en drinkware in clubstijl"
+    elif niche == "Lustrums & jubileumcommissies":
+        offer = "Lustrummerch zoals kleding, drinkware, tassen en jubileumitems met een eigen ontwerp"
+    else:
+        offer = "Custom kleding & merchandise in eigen huisstijl"
     if vacancies or employer:
         reason = "De website toont actieve werving of employer-branding-signalen."
     elif events:

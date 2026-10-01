@@ -6,6 +6,7 @@ import hmac
 import html
 import re
 import time
+import threading
 from urllib.parse import urlencode
 
 import httpx
@@ -18,6 +19,11 @@ from ..models import MailIntegration
 
 PROVIDER = "zoho"
 SCOPES = "ZohoMail.accounts.READ,ZohoMail.messages.CREATE"
+
+_token_lock = threading.Lock()
+_cached_access_token: str | None = None
+_cached_access_token_until: float = 0.0
+_cached_refresh_fingerprint: str | None = None
 
 
 def _fernet() -> Fernet:
@@ -91,17 +97,63 @@ def exchange_code(code: str, redirect_uri: str) -> dict:
     })
 
 
-def refresh_access_token(refresh_token: str) -> str:
-    payload = _token_request({
-        "refresh_token": refresh_token,
-        "client_id": settings.zoho_client_id,
-        "client_secret": settings.zoho_client_secret,
-        "grant_type": "refresh_token",
-    })
-    token = payload.get("access_token")
-    if not token:
-        raise RuntimeError("Zoho gaf geen access token terug.")
-    return token
+def _refresh_fingerprint(refresh_token: str) -> str:
+    return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+
+def _invalidate_access_token() -> None:
+    global _cached_access_token, _cached_access_token_until, _cached_refresh_fingerprint
+    with _token_lock:
+        _cached_access_token = None
+        _cached_access_token_until = 0.0
+        _cached_refresh_fingerprint = None
+
+
+def refresh_access_token(refresh_token: str, *, force: bool = False) -> str:
+    global _cached_access_token, _cached_access_token_until, _cached_refresh_fingerprint
+
+    fingerprint = _refresh_fingerprint(refresh_token)
+    now = time.time()
+
+    with _token_lock:
+        if (
+            not force
+            and _cached_access_token
+            and _cached_refresh_fingerprint == fingerprint
+            and now < _cached_access_token_until
+        ):
+            return _cached_access_token
+
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                payload = _token_request({
+                    "refresh_token": refresh_token,
+                    "client_id": settings.zoho_client_id,
+                    "client_secret": settings.zoho_client_secret,
+                    "grant_type": "refresh_token",
+                })
+                token = payload.get("access_token")
+                if not token:
+                    raise RuntimeError("Zoho gaf geen access token terug.")
+
+                expires_in = int(payload.get("expires_in") or payload.get("expires_in_sec") or 3600)
+                _cached_access_token = token
+                _cached_refresh_fingerprint = fingerprint
+                _cached_access_token_until = time.time() + max(60, expires_in - 300)
+                return token
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                # Zoho can briefly reject concurrent refreshes. Serialize all callers
+                # and retry once after a short delay. Permanent OAuth errors still fail.
+                if attempt == 0 and exc.response.status_code in (400, 429, 500, 502, 503, 504):
+                    time.sleep(0.8)
+                    continue
+                raise
+
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Zoho access token kon niet worden vernieuwd.")
 
 
 def _headers(access_token: str) -> dict:
@@ -222,7 +274,8 @@ def send_email(db: Session, to_address: str, subject: str, content: str) -> dict
     row = db.scalar(select(MailIntegration).where(MailIntegration.provider == PROVIDER))
     if not row:
         raise RuntimeError("Zoho Mail is niet verbonden.")
-    access_token = refresh_access_token(_decrypt(row.refresh_token_encrypted))
+
+    refresh_token = _decrypt(row.refresh_token_encrypted)
     body = {
         "fromAddress": row.email_address,
         "toAddress": to_address,
@@ -230,14 +283,25 @@ def send_email(db: Session, to_address: str, subject: str, content: str) -> dict
         "content": _to_html_email(content) + _signature_html(),
         "mailFormat": "html",
     }
+
+    access_token = refresh_access_token(refresh_token)
     with httpx.Client(timeout=30) as client:
         response = client.post(
             f"{settings.zoho_mail_base}/api/accounts/{row.account_id}/messages",
             headers=_headers(access_token),
             json=body,
         )
+        if response.status_code == 401:
+            _invalidate_access_token()
+            access_token = refresh_access_token(refresh_token, force=True)
+            response = client.post(
+                f"{settings.zoho_mail_base}/api/accounts/{row.account_id}/messages",
+                headers=_headers(access_token),
+                json=body,
+            )
         response.raise_for_status()
         payload = response.json()
+
     status = payload.get("status") or {}
     if status.get("code") not in (200, 201):
         raise RuntimeError(f"Zoho Mail fout: {status.get('description') or payload}")

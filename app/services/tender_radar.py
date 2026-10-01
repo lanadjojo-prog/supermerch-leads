@@ -602,6 +602,9 @@ def run_tender_scan_background() -> None:
     try:
         result = run_tender_scan(db)
         logger.warning("Tender scan result: %s", result)
+        from .tender_outreach import prepare_tender_outreach_batch
+        outreach = prepare_tender_outreach_batch(db)
+        logger.warning("Tender outreach after scan: %s", outreach)
     finally:
         db.close()
 
@@ -628,9 +631,15 @@ def run_tender_scan_if_due_background() -> None:
                 latest.analyzed_count,
                 latest.finished_at,
             )
+            from .tender_outreach import prepare_tender_outreach_batch
+            outreach = prepare_tender_outreach_batch(db)
+            logger.warning("Tender outreach after skipped scan: %s", outreach)
             return
         result = run_tender_scan(db)
         logger.warning("Scheduled Tender scan result: %s", result)
+        from .tender_outreach import prepare_tender_outreach_batch
+        outreach = prepare_tender_outreach_batch(db)
+        logger.warning("Tender outreach after scheduled scan: %s", outreach)
     except Exception:
         logger.exception("Scheduled Tender scan failed")
     finally:

@@ -14,6 +14,10 @@ def positive(value: str | None) -> bool:
 
 
 SECTOR_WEIGHTS = {
+    # Actuele focussegmenten: zeer natuurlijke groeps-/eventmerch-behoefte.
+    "Carnaval & optochten": 22,
+    "Sport fanclubs & supporters": 22,
+    "Lustrums & jubileumcommissies": 22,
     # Grootste promo/merch-kopers uit brancheonderzoek + sterke SuperMerch-fit.
     "Onderwijs": 18,
     "Bouw & techniek": 16,

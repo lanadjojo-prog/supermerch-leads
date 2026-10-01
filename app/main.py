@@ -26,7 +26,6 @@ from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
 from .services.tender_radar import run_tender_scan_if_due_background
-from .services.tender_outreach import prepare_tender_outreach_batch_background
 from . import dropdesk_store
 
 logger = logging.getLogger(__name__)
@@ -71,12 +70,6 @@ async def lifespan(app: FastAPI):
     threading.Thread(
         target=run_tender_scan_if_due_background,
         name="supermerch-tender-radar-startup",
-        daemon=True,
-    ).start()
-
-    threading.Thread(
-        target=prepare_tender_outreach_batch_background,
-        name="supermerch-tender-outreach-prep",
         daemon=True,
     ).start()
 

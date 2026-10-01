@@ -112,6 +112,26 @@ class TenderOpportunity(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class TenderOutreach(Base):
+    __tablename__ = "tender_outreach"
+    __table_args__ = (UniqueConstraint("opportunity_id", name="uq_tender_outreach_opportunity"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    opportunity_id: Mapped[int] = mapped_column(ForeignKey("tender_opportunities.id"), index=True)
+    contact_name: Mapped[Optional[str]] = mapped_column(String(220), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    contact_role: Mapped[Optional[str]] = mapped_column(String(220), nullable=True)
+    contact_source: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    contact_route: Mapped[str] = mapped_column(String(60), default="unknown", index=True)
+    policy_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    request_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    draft_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    send_status: Mapped[str] = mapped_column(String(60), default="draft_only", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class TenderScanRun(Base):
     __tablename__ = "tender_scan_runs"
 

@@ -23,9 +23,11 @@ LEAD_CATEGORIES: tuple[LeadCategory, ...] = (
     LeadCategory("Foodservice", ("cateringbedrijf", "foodtruck", "bakkerij", "slagerij", "ijssalon")),
     LeadCategory("Sport & fitness", ("sportschool", "CrossFit box", "HYROX gym", "personal trainer studio", "bootcamp club")),
     LeadCategory("Sportclubs", ("voetbalclub", "hockeyclub", "tennisclub", "padelclub", "volleybalclub", "basketbalclub", "hardloopclub", "wielerclub", "golfclub")),
+    LeadCategory("Sport fanclubs & supporters", ("supportersvereniging", "supportersclub", "sport fanclub", "fanvereniging sportclub", "voetbal fanclub", "supportersvereniging voetbal", "supportersclub voetbal")),
     LeadCategory("Studio's & dans", ("yogastudio", "pilatesstudio", "dansschool", "vechtsportschool", "zwemschool")),
     LeadCategory("Onderwijs", ("basisschool", "middelbare school", "MBO school", "hogeschool", "universiteit")),
     LeadCategory("Studentenorganisaties", ("studentenvereniging", "studievereniging", "alumnivereniging")),
+    LeadCategory("Lustrums & jubileumcommissies", ("lustrumcommissie", "studentenvereniging lustrum", "studievereniging lustrum", "jubileumcommissie vereniging", "lustrum evenement", "lustrum gala")),
     LeadCategory("Zorg", ("fysiotherapiepraktijk", "tandartspraktijk", "orthodontist", "huisartsenpraktijk", "kliniek", "thuiszorgorganisatie", "zorginstelling")),
     LeadCategory("Beauty & wellness", ("kapsalon", "barbershop", "schoonheidssalon", "nagelstudio", "tattoo studio", "beauty clinic", "wellnesscentrum", "spa")),
     LeadCategory("Dierenzorg", ("dierenarts", "dierenkliniek")),
@@ -49,13 +51,24 @@ LEAD_CATEGORIES: tuple[LeadCategory, ...] = (
     LeadCategory("Food & beverage merken", ("koffiebranderij", "frisdrankmerk", "snackmerk", "food startup", "food merk")),
     LeadCategory("Media", ("mediabureau", "productiehuis", "uitgeverij", "radiostation", "lokale media")),
     LeadCategory("Overheid & semi-overheid", ("gemeente", "bibliotheek", "culturele instelling", "veiligheidsregio")),
-    LeadCategory("Recreatie & seizoensorganisaties", ("zomerkamp organisatie", "kerstmarkt organisatie", "carnavalsvereniging", "wintersport organisatie")),
+    LeadCategory("Recreatie & seizoensorganisaties", ("zomerkamp organisatie", "kerstmarkt organisatie", "wintersport organisatie")),
+    LeadCategory("Carnaval & optochten", ("carnavalsvereniging", "carnavalsstichting", "carnavalsorganisatie", "carnavalsclub", "optochtorganisatie carnaval", "prinsenvereniging", "carnavalskapel")),
+)
+
+
+FOCUS_CATEGORY_NAMES: tuple[str, ...] = (
+    "Carnaval & optochten",
+    "Sport fanclubs & supporters",
+    "Lustrums & jubileumcommissies",
 )
 
 
 PRIORITY_CATEGORY_NAMES: tuple[str, ...] = (
     # Eerst de segmenten die in promo/merch-onderzoek groot zijn of voor
     # SuperMerch een natuurlijke, herhaalbare kleding/merch-behoefte hebben.
+    "Carnaval & optochten",
+    "Sport fanclubs & supporters",
+    "Lustrums & jubileumcommissies",
     "Bouw & techniek",
     "Onderwijs",
     "Industrie & productie",
@@ -109,7 +122,12 @@ def iter_daily_searches(day: date):
         other_offset = (seed * 3) % len(remaining)
         remaining = remaining[other_offset:] + remaining[:other_offset]
 
-    categories = tuple(priority + remaining)
+    focus = [by_name[name] for name in FOCUS_CATEGORY_NAMES if name in by_name]
+    # De drie actuele SuperMerch-focussegmenten krijgen extra zoekgewicht.
+    # Daardoor bestaat grofweg de helft van de eerste zoekrotatie uit carnaval,
+    # supporters/fanclubs en lustrum/jubileum, zonder de overige markt stil te zetten.
+    weighted_focus = focus * 4
+    categories = tuple(weighted_focus + priority + remaining)
     region_offset = (seed * 7) % len(regions)
 
     for region_step in range(len(regions)):

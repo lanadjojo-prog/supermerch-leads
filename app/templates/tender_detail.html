@@ -43,6 +43,41 @@
 </div>
 
 <section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Contact & benadering</h2>
+      <small>Automatisch uit de openbare aanbestedingsdata gehaald.</small>
+    </div>
+    <form method="post" action="/tenders/{{ tender.id }}/outreach/refresh">
+      <button class="button ghost small" type="submit">Opnieuw opbouwen</button>
+    </form>
+  </div>
+  {% if outreach %}
+  <dl>
+    <dt>Contactroute</dt><dd><span class="badge">{{ outreach.contact_route }}</span></dd>
+    <dt>E-mail</dt><dd>{{ outreach.contact_email or 'Geen openbaar e-mailadres gevonden' }}</dd>
+    <dt>Concrete behoefte</dt><dd>{{ outreach.request_summary or '—' }}</dd>
+    <dt>Status</dt><dd>{{ outreach.send_status }}</dd>
+  </dl>
+  <p class="lead-reason">{{ outreach.policy_reason }}</p>
+  <h3>{{ outreach.subject }}</h3>
+  <div class="outreach">{{ outreach.draft_body }}</div>
+  <div class="outreach" style="margin-top:12px;">
+Met vriendelijke groet / Kind regards,
+
+Chris | Supermerch
+Premium custom apparel & merchandise
+
+🌐 supermerch.nl
+✉️ info@supermerch.nl
+📸 @supermerch.nl
+  </div>
+  {% else %}
+  <p>Nog geen contactconcept opgebouwd.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
   <h2>Samenvatting</h2>
   <p>{{ tender.ai_summary or tender.description or '—' }}</p>
 </section>

@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from .auth import require_basic_auth
 from .config import settings
 from .database import SessionLocal
-from .models import TenderOpportunity, TenderScanRun
+from .models import TenderOpportunity, TenderOutreach, TenderScanRun
 from .services.tender_radar import run_tender_scan_background
+from .services.tender_outreach import prepare_tender_outreach
 from .main_helpers import templates
 
 router = APIRouter(prefix="/tenders", tags=["tenders"])
@@ -55,10 +56,18 @@ def tender_detail(request: Request, opportunity_id: int, db: Session = Depends(g
     opportunity = db.get(TenderOpportunity, opportunity_id)
     if not opportunity:
         raise HTTPException(404)
+    outreach = db.scalar(select(TenderOutreach).where(TenderOutreach.opportunity_id == opportunity.id))
+    if outreach is None:
+        outreach = prepare_tender_outreach(db, opportunity)
     return templates.TemplateResponse(
         request,
         "tender_detail.html",
-        {"app_name": settings.app_name, "tender": opportunity, "message": request.query_params.get("message")},
+        {
+            "app_name": settings.app_name,
+            "tender": opportunity,
+            "outreach": outreach,
+            "message": request.query_params.get("message"),
+        },
     )
 
 @router.post("/{opportunity_id}/status", dependencies=[Depends(auth)])
@@ -72,3 +81,16 @@ def tender_status(opportunity_id: int, status_value: str = Form(...), db: Sessio
     opportunity.status = status_value
     db.commit()
     return RedirectResponse(f"/tenders/{opportunity_id}?message=Status bijgewerkt.", status_code=303)
+
+
+@router.post("/{opportunity_id}/outreach/refresh", dependencies=[Depends(auth)])
+def refresh_tender_outreach(opportunity_id: int, db: Session = Depends(get_db)):
+    opportunity = db.get(TenderOpportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(404)
+    existing = db.scalar(select(TenderOutreach).where(TenderOutreach.opportunity_id == opportunity_id))
+    if existing:
+        existing.draft_body = None
+        db.commit()
+    prepare_tender_outreach(db, opportunity)
+    return RedirectResponse(f"/tenders/{opportunity_id}?message=Contactgegevens en concept opnieuw opgebouwd.", status_code=303)

@@ -57,6 +57,26 @@ class Lead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     campaign: Mapped[Campaign] = relationship(back_populates="leads")
+    triggers: Mapped[list["LeadTrigger"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
+
+class LeadTrigger(Base):
+    __tablename__ = "lead_triggers"
+    __table_args__ = (
+        UniqueConstraint("lead_id", "trigger_type", "source_url", name="uq_lead_trigger_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    trigger_type: Mapped[str] = mapped_column(String(80), index=True)
+    label: Mapped[str] = mapped_column(String(180))
+    strength: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    recommended_offer: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    lead: Mapped[Lead] = relationship(back_populates="triggers")
+
 
 
 class MailIntegration(Base):

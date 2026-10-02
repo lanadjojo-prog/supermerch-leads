@@ -85,7 +85,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         }
 
     run_goal = min(remaining, settings.daily_send_batch)
-    sent_this_run = failed_sends = searches_run = created = qualified = 0
+    sent_this_run = failed_sends = searches_run = created = qualified = trigger_hits = 0
 
     sent_now, failed_now = _send_candidates(
         db,
@@ -141,6 +141,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
 
             created += int(result.get("created", 0))
             qualified += int(result.get("qualified", 0))
+            trigger_hits += int(result.get("trigger_hits", 0))
 
             sent_now, failed_now = _send_candidates(
                 db,
@@ -161,6 +162,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         "searches_run": searches_run,
         "leads_created": created,
         "qualified": qualified,
+        "trigger_hits": trigger_hits,
         "send_failed": failed_sends,
         "status": (
             "daily_target_reached"

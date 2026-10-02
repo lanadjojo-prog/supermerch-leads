@@ -14,11 +14,9 @@ def positive(value: str | None) -> bool:
 
 
 SECTOR_WEIGHTS = {
-    # Actuele focussegmenten: zeer natuurlijke groeps-/eventmerch-behoefte.
     "Carnaval & optochten": 22,
     "Sport fanclubs & supporters": 22,
     "Lustrums & jubileumcommissies": 22,
-    # Grootste promo/merch-kopers uit brancheonderzoek + sterke SuperMerch-fit.
     "Onderwijs": 18,
     "Bouw & techniek": 16,
     "Zakelijke dienstverlening": 14,
@@ -48,10 +46,20 @@ SECTOR_WEIGHTS = {
 }
 
 
-def score_lead(analysis: dict, niche: str | None = None) -> ScoreResult:
+STRONG_TRIGGER_TYPES = {
+    "merch_workwear", "anniversary", "rebrand", "opening", "trade_show", "event"
+}
+
+
+def score_lead(
+    analysis: dict,
+    niche: str | None = None,
+    triggers: list[dict] | None = None,
+) -> ScoreResult:
     score = 0
     reasons: list[str] = []
     strong_signal_count = 0
+    triggers = triggers or []
 
     sector = niche or str(analysis.get("industry") or "")
     sector_points = SECTOR_WEIGHTS.get(sector, 5)
@@ -74,7 +82,6 @@ def score_lead(analysis: dict, niche: str | None = None) -> ScoreResult:
             strong_signal_count += 1
             reasons.append(f"+{points} {label}")
 
-    # Ondersteunende signalen: nuttig, maar nooit voldoende om op zichzelf te mailen.
     support_rules = [
         ("growth_signal", 6, "Groei/uitbreiding"),
         ("employer_branding_signal", 6, "Employer branding/teamcommunicatie"),
@@ -85,12 +92,31 @@ def score_lead(analysis: dict, niche: str | None = None) -> ScoreResult:
             score += points
             reasons.append(f"+{points} {label}")
 
+    # Deterministische triggerlaag: bewijs + bron op de site. We geven slechts een
+    # beperkte bonus om dubbele telling met de AI-signalen te voorkomen.
+    strong_trigger_count = 0
+    for index, trigger in enumerate(triggers[:3]):
+        trigger_type = str(trigger.get("trigger_type") or "")
+        strength = int(trigger.get("strength") or 0)
+        label = str(trigger.get("label") or trigger_type or "Trigger")
+        if trigger_type in STRONG_TRIGGER_TYPES and strength >= 20:
+            strong_trigger_count += 1
+            bonus = 10 if index == 0 else 4
+        elif strength >= 20:
+            bonus = 4 if index == 0 else 2
+        else:
+            # Vacatures/groei zijn nuttig voor personalisatie maar niet sterk genoeg
+            # om een lead zelfstandig automatisch te laten mailen.
+            bonus = 2 if index == 0 else 0
+        if bonus:
+            score += bonus
+            reasons.append(f"+{bonus} Trigger met bron: {label}")
+
     employee = (analysis.get("employee_signal") or "").lower().strip()
     if employee and employee not in {"unknown", "onbekend", "0", "1", "1-1", "solo"}:
         score += 8
         reasons.append("+8 Zichtbaar team/organisatie")
 
-    # Een AI-gegenereerd aanbod is géén bewijs dat er koopintentie is.
     if analysis.get("recommended_offer"):
         reasons.append("+0 Aanbod mogelijk, maar telt niet als koopsignaal")
 
@@ -106,11 +132,13 @@ def score_lead(analysis: dict, niche: str | None = None) -> ScoreResult:
 
     score = max(0, min(score, 100))
 
-    # Harde kwaliteitsregel: er moet minimaal één concreet merch-gerelateerd
-    # koopsignaal zijn. Een zzp/eenmanszaak wordt niet automatisch gemaild.
-    auto_eligible = strong_signal_count >= 1 and not one_person and score >= 60
-    if strong_signal_count == 0:
-        reasons.append("AUTO BLOK: geen sterk merchandise-koopsignaal")
+    # Automatisch mailen vereist minimaal één sterk merchsignaal OF een sterke,
+    # concrete trigger met bron. Hiring/vacatures alleen tellen dus niet.
+    has_strong_trigger = strong_trigger_count >= 1
+    auto_eligible = (strong_signal_count >= 1 or has_strong_trigger) and not one_person and score >= 60
+
+    if strong_signal_count == 0 and not has_strong_trigger:
+        reasons.append("AUTO BLOK: geen sterk merchandise-koopsignaal of sterke trigger")
     elif one_person:
         reasons.append("AUTO BLOK: duidelijke zzp/eenmanszaak")
     elif score < 60:
@@ -119,6 +147,6 @@ def score_lead(analysis: dict, niche: str | None = None) -> ScoreResult:
     return ScoreResult(
         score=score,
         reasons=reasons,
-        strong_signal_count=strong_signal_count,
+        strong_signal_count=strong_signal_count + strong_trigger_count,
         auto_eligible=auto_eligible,
     )

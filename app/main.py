@@ -18,7 +18,7 @@ from .tender_routes import router as tender_router
 from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .models import Campaign, Lead, MailIntegration, TenderOpportunity, TenderScanRun
+from .models import Campaign, Lead, LeadTrigger, MailIntegration, TenderOpportunity, TenderScanRun
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
@@ -260,9 +260,11 @@ def automation_status(db: Session = Depends(get_db)):
 def dashboard(request: Request, db: Session = Depends(get_db)):
     campaigns = db.scalars(select(Campaign).order_by(Campaign.created_at.desc())).all()
     counts = dict(db.execute(select(Lead.status, func.count(Lead.id)).group_by(Lead.status)).all())
+    trigger_count = db.scalar(select(func.count(LeadTrigger.id))) or 0
+    triggered_lead_count = db.scalar(select(func.count(func.distinct(LeadTrigger.lead_id)))) or 0
     top_leads = db.scalars(select(Lead).where(Lead.status == "ready_for_review").order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)).all()
     status = _automation_status_payload(db)
-    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status})
+    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "trigger_count": trigger_count, "triggered_lead_count": triggered_lead_count, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status})
 
 
 @app.get("/campaigns/new", response_class=HTMLResponse, dependencies=[Depends(auth)])
@@ -309,7 +311,12 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
     mailto = None
     if lead.email and lead.outreach_text:
         mailto = f"mailto:{lead.email}?subject={quote('Merchandise voor ' + lead.company_name, safe='')}&body={quote(lead.outreach_text, safe='')}"
-    return templates.TemplateResponse(request, "lead_detail.html", {"lead": lead, "mailto": mailto, "app_name": settings.app_name, "zoho_connected": zoho_mail.connected(db), "send_message": request.query_params.get("message"), "send_error": request.query_params.get("error") == "1"})
+    triggers = db.scalars(
+        select(LeadTrigger)
+        .where(LeadTrigger.lead_id == lead.id)
+        .order_by(LeadTrigger.strength.desc(), LeadTrigger.created_at.desc())
+    ).all()
+    return templates.TemplateResponse(request, "lead_detail.html", {"lead": lead, "triggers": triggers, "mailto": mailto, "app_name": settings.app_name, "zoho_connected": zoho_mail.connected(db), "send_message": request.query_params.get("message"), "send_error": request.query_params.get("error") == "1"})
 
 
 @app.post("/leads/{lead_id}/status", dependencies=[Depends(auth)])
@@ -450,7 +457,26 @@ def send_lead_via_zoho(lead_id: int, db: Session = Depends(get_db)):
 def regenerate_lead_outreach(lead_id: int, db: Session = Depends(get_db)):
     lead = db.get(Lead, lead_id)
     if not lead: raise HTTPException(404)
-    analysis = {"industry": lead.industry, "company_summary": lead.company_summary, "employee_signal": lead.employee_signal, "vacancies_signal": lead.vacancies_signal, "employer_branding_signal": lead.employer_branding_signal, "event_signal": lead.event_signal, "growth_signal": lead.growth_signal, "merch_signal": lead.merch_signal, "recommended_offer": "Custom kleding & merchandise in eigen huisstijl", "lead_reason": lead.lead_reason}
-    lead.recommended_offer = "Custom kleding & merchandise in eigen huisstijl"
+    strongest_trigger = db.scalar(
+        select(LeadTrigger)
+        .where(LeadTrigger.lead_id == lead.id)
+        .order_by(LeadTrigger.strength.desc(), LeadTrigger.created_at.desc())
+        .limit(1)
+    )
+    offer = (
+        strongest_trigger.recommended_offer
+        if strongest_trigger and strongest_trigger.recommended_offer
+        else (lead.recommended_offer or "Custom kleding & merchandise in eigen huisstijl")
+    )
+    analysis = {"industry": lead.industry, "company_summary": lead.company_summary, "employee_signal": lead.employee_signal, "vacancies_signal": lead.vacancies_signal, "employer_branding_signal": lead.employer_branding_signal, "event_signal": lead.event_signal, "growth_signal": lead.growth_signal, "merch_signal": lead.merch_signal, "recommended_offer": offer, "lead_reason": lead.lead_reason}
+    if strongest_trigger:
+        analysis.update({
+            "trigger_label": strongest_trigger.label,
+            "trigger_evidence": strongest_trigger.evidence,
+            "trigger_source_url": strongest_trigger.source_url,
+            "trigger_strength": strongest_trigger.strength,
+            "trigger_type": strongest_trigger.trigger_type,
+        })
+    lead.recommended_offer = offer
     lead.outreach_text = generate_outreach(lead.company_name, lead.contact_name, analysis); db.commit()
     return RedirectResponse(f"/leads/{lead_id}?message={quote_plus('Nieuw outreachconcept gemaakt.')}", status_code=303)

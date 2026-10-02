@@ -12,7 +12,10 @@ from ..config import settings
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 RELEVANT_HINTS = (
     "contact", "over-ons", "about", "team", "vacature", "vacatures",
-    "werken-bij", "careers", "jobs", "nieuws", "news", "event",
+    "werken-bij", "careers", "jobs", "nieuws", "news", "event", "events",
+    "agenda", "beurs", "expo", "congres", "festival", "toernooi",
+    "jubileum", "lustrum", "opening", "heropening", "vestiging", "locaties",
+    "rebrand", "huisstijl", "nieuw-logo", "sponsor", "partners", "pers", "blog",
 )
 
 

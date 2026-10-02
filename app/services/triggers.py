@@ -56,7 +56,7 @@ TRIGGER_RULES = (
         "strength": 29,
         "patterns": (
             r"\bnieuwe vestiging\b", r"\bnieuwe locatie\b", r"\bopening van\b",
-            r"\bgrand opening\b", r"\bheropening\b", r"\bopent .* vestiging\b",
+            r"\bgrand opening\b", r"\bheropening\b", r"\bopent .{0,80} vestiging\b",
         ),
         "offer": "Openings- en teammerch zoals kleding, drinkwaren en give-aways",
     },
@@ -76,8 +76,10 @@ TRIGGER_RULES = (
         "label": "Event / activatie",
         "strength": 25,
         "patterns": (
-            r"\bevenement\b", r"\bevent\b", r"\bfestival\b", r"\btoernooi\b",
-            r"\bbedrijfsfeest\b", r"\bopen dag\b",
+            r"\baankomend(?:e)? event\b", r"\baankomend(?:e)? evenement\b",
+            r"\borganise(?:ert|ren) .{0,80} evenement\b",
+            r"\bbezoek ons .{0,80} event\b", r"\bkom naar .{0,80} event\b",
+            r"\bfestival\b", r"\btoernooi\b", r"\bbedrijfsfeest\b", r"\bopen dag\b",
         ),
         "offer": "Eventmerch zoals shirts, caps, drinkwaren, tassen en give-aways",
     },

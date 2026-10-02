@@ -9,7 +9,24 @@
 <dt>Groei</dt><dd>{{ lead.growth_signal or '—' }}</dd>
 <dt>Events</dt><dd>{{ lead.event_signal or '—' }}</dd>
 <dt>Merch zichtbaar</dt><dd>{{ lead.merch_signal or '—' }}</dd>
-</dl>{% if lead.score_reasons %}<pre class="reasons">{{ lead.score_reasons }}</pre>{% endif %}</section>
+</dl>
+{% if triggers %}
+<h3>Gevonden triggers</h3>
+<div class="cards">
+{% for trigger in triggers %}
+<div class="lead-card">
+  <div class="score small-score">{{ trigger.strength }}</div>
+  <div>
+    <strong>{{ trigger.label }}</strong>
+    <p>{{ trigger.evidence or 'Geen bewijsfragment opgeslagen.' }}</p>
+    {% if trigger.recommended_offer %}<small>{{ trigger.recommended_offer }}</small>{% endif %}
+    {% if trigger.source_url %}<br><a href="{{ trigger.source_url }}" target="_blank" rel="noopener">Bron bekijken ↗</a>{% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% if lead.score_reasons %}<pre class="reasons">{{ lead.score_reasons }}</pre>{% endif %}</section>
 <section class="panel"><h2>Contact</h2><dl><dt>Naam</dt><dd>{{ lead.contact_name or 'Nog niet gevonden' }}</dd><dt>Rol</dt><dd>{{ lead.contact_role or '—' }}</dd><dt>E-mail</dt><dd>{{ lead.email or 'Nog niet gevonden' }}</dd></dl>
 <div class="actions"><form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="approved"><button class="button">✓ Goedkeuren</button></form>
 <form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="rejected"><button class="button ghost">Afwijzen</button></form></div></section>

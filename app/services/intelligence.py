@@ -148,6 +148,10 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
     variant = outreach_variant(company_name)
     reason = str(analysis.get("lead_reason") or "").strip()
     summary = str(analysis.get("company_summary") or "").strip()
+    offer = str(analysis.get("recommended_offer") or "").strip()
+    trigger_label = str(analysis.get("trigger_label") or "").strip()
+    trigger_evidence = str(analysis.get("trigger_evidence") or "").strip()
+    trigger_source_url = str(analysis.get("trigger_source_url") or "").strip()
 
     if not settings.openai_api_key:
         if variant == "A":
@@ -219,6 +223,15 @@ Bedrijf: {company_name}
 Contact: {contact_name or 'onbekend'}
 Feitelijke aanleiding: {reason}
 Samenvatting: {summary}
+Passend aanbod: {offer or 'geen specifiek aanbod vastgesteld'}
+Trigger: {trigger_label or 'geen aparte trigger'}
+Triggerbewijs: {trigger_evidence or 'geen apart triggerbewijs'}
+Bronpagina trigger: {trigger_source_url or 'onbekend'}
+
+Extra regel:
+- Als er een concrete trigger met bewijs is, gebruik die als natuurlijke aanleiding en koppel alleen het passende aanbod eraan.
+- Noem geen bron-URL in de mail zelf.
+- Een vacature/groei-signaal alleen is te zwak voor stellige personalisatie; formuleer dan terughoudend.
 """
     response = client.responses.create(model=settings.openai_model, input=prompt, store=False)
     return response.output_text.strip()

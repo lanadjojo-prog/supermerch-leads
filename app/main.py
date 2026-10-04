@@ -22,6 +22,7 @@ from .models import Campaign, Lead, LeadTrigger, MailIntegration, TenderOpportun
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
+from .services.discovery import discover_google_places
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -147,6 +148,48 @@ def health(background_tasks: BackgroundTasks):
         db.close()
 
     return {"ok": True, "automation_triggered": True, "tender_radar": tender}
+
+
+@app.post("/api/internal/discovery/places")
+async def internal_discovery_places(request: Request):
+    token = request.headers.get("X-Discovery-Bridge-Token", "")
+    if not settings.discovery_bridge_token or not compare_digest(token, settings.discovery_bridge_token):
+        raise HTTPException(401, "Unauthorized")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON")
+
+    query = str(payload.get("query") or "").strip()
+    region = str(payload.get("region") or "").strip()
+    try:
+        limit = max(1, min(int(payload.get("limit") or 15), 25))
+    except Exception:
+        limit = 15
+
+    if not query or not region:
+        raise HTTPException(400, "query and region are required")
+
+    try:
+        companies = discover_google_places(query, region, limit=limit)
+    except Exception as exc:
+        logger.exception("Discovery bridge failed for %s / %s", query, region)
+        raise HTTPException(502, str(exc))
+
+    return {
+        "ok": True,
+        "query": query,
+        "region": region,
+        "companies": [
+            {
+                "name": c.name,
+                "website": c.website,
+                "address": c.address,
+                "source": c.source,
+            }
+            for c in companies
+        ],
+    }
 
 
 @app.post("/api/internal/dropdesk-storage")

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import ChatCommand, Lead
 from . import zoho_mail
-from .intelligence import outreach_subject, outreach_variant
+from .intelligence import generate_outreach, outreach_subject, outreach_variant
 
 
 AMSTERDAM_TZ = ZoneInfo("Europe/Amsterdam")
@@ -86,6 +86,22 @@ def send_lead(db: Session, lead: Lead) -> bool:
     }
     variant = outreach_variant(lead.company_name, outreach_context)
     subject = outreach_subject(lead.company_name, variant)
+
+    # Upgrade queued drafts created under the previous design-first proposition.
+    # Preserve manually edited/newer copy unless it still contains old template markers.
+    old_copy_markers = (
+        "binnen 24 uur",
+        "Bij SuperMerch maken we custom kleding",
+        "custom kleding en merchandise voor bedrijven en teams",
+        "In plaats van meteen een offerte te sturen",
+    )
+    if any(marker.lower() in (lead.outreach_text or "").lower() for marker in old_copy_markers):
+        lead.outreach_text = generate_outreach(
+            lead.company_name,
+            lead.contact_name,
+            outreach_context,
+        )
+        db.commit()
 
     try:
         zoho_mail.send_email(

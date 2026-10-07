@@ -73,7 +73,18 @@ def send_lead(db: Session, lead: Lead) -> bool:
     if not lead.email or not lead.outreach_text:
         raise ValueError("Lead heeft geen verzendklaar e-mailadres en outreachtekst.")
 
-    variant = outreach_variant(lead.company_name)
+    strongest_trigger = max(lead.triggers, key=lambda t: t.strength, default=None)
+    outreach_context = {
+        "lead_reason": lead.lead_reason,
+        "company_summary": lead.company_summary,
+        "recommended_offer": lead.recommended_offer,
+        "event_signal": lead.event_signal,
+        "merch_signal": lead.merch_signal,
+        "trigger_label": strongest_trigger.label if strongest_trigger else "",
+        "trigger_evidence": strongest_trigger.evidence if strongest_trigger else "",
+        "trigger_source_url": strongest_trigger.source_url if strongest_trigger else "",
+    }
+    variant = outreach_variant(lead.company_name, outreach_context)
     subject = outreach_subject(lead.company_name, variant)
 
     try:

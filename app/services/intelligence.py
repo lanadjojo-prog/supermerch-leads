@@ -131,21 +131,51 @@ WEBSITECONTENT:
 
 
 
-def outreach_variant(company_name: str) -> str:
-    normalized = company_name.strip().lower().encode("utf-8")
-    bucket = hashlib.sha256(normalized).digest()[0] % 2
-    return "A" if bucket == 0 else "B"
+def _has_concrete_personalization(analysis: dict | None) -> bool:
+    if not analysis:
+        return False
+
+    trigger_evidence = str(analysis.get("trigger_evidence") or "").strip()
+    if len(trigger_evidence) >= 20:
+        return True
+
+    strong_signal_fields = (
+        "merch_signal",
+        "workwear_signal",
+        "multi_location_signal",
+        "community_signal",
+        "sponsorship_signal",
+        "recurring_event_signal",
+        "anniversary_rebrand_signal",
+        "event_signal",
+    )
+    if any(str(analysis.get(field) or "").lower() == "yes" for field in strong_signal_fields):
+        return True
+
+    reason = str(analysis.get("lead_reason") or "").strip().lower()
+    generic_reasons = (
+        "",
+        "het bedrijf past binnen de geselecteerde doelgroep.",
+        "past binnen de geselecteerde doelgroep",
+        "geen concrete aanleiding",
+    )
+    return reason not in generic_reasons and len(reason) >= 24
+
+
+def outreach_variant(company_name: str, analysis: dict | None = None) -> str:
+    """Use website evidence to choose the outreach route."""
+    return "A" if _has_concrete_personalization(analysis) else "B"
 
 
 def outreach_subject(company_name: str, variant: str | None = None) -> str:
-    variant = variant or outreach_variant(company_name)
+    variant = variant or "B"
     if variant == "A":
         return f"Een idee voor {company_name}"
-    return f"Iets uitwerken voor {company_name}?"
+    return f"Merch voor {company_name}"
 
 
 def generate_outreach(company_name: str, contact_name: str | None, analysis: dict) -> str:
-    variant = outreach_variant(company_name)
+    variant = outreach_variant(company_name, analysis)
     reason = str(analysis.get("lead_reason") or "").strip()
     summary = str(analysis.get("company_summary") or "").strip()
     offer = str(analysis.get("recommended_offer") or "").strip()
@@ -157,19 +187,24 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
         if variant == "A":
             return (
                 "Hi!\n\n"
-                f"Ik kwam {company_name} tegen en dacht dat ik je even een kort berichtje zou sturen.\n\n"
-                "Bij SuperMerch maken we custom kleding en merchandise voor bedrijven en teams. "
-                "Om meteen iets concreets te laten zien, kunnen we binnen 24 uur vrijblijvend een eerste "
-                "ontwerpvoorstel in jullie huisstijl maken.\n\n"
+                "Ik ben Chris van SuperMerch.\n\n"
+                f"Ik kwam {company_name} tegen en zag op jullie website een concrete aanleiding om even contact op te nemen.\n\n"
+                "Wij helpen organisaties met het volledig uit handen nemen van merchandise: "
+                "van productkeuze en design tot productie en levering. Eén aanspreekpunt, zodat je "
+                "niet zelf met verschillende leveranciers en ontwerpen hoeft te schakelen.\n\n"
+                f"Als je wilt, kan ik een paar concrete ideeën voor {company_name} uitwerken "
+                "en eventueel direct een eerste ontwerpvoorstel maken.\n\n"
                 f"Zal ik iets voor {company_name} uitwerken?"
             )
         return (
             "Hi!\n\n"
-            "Ik ben Chris van SuperMerch. Bij SuperMerch maken we custom kleding en merchandise voor "
-            "bedrijven en teams.\n\n"
-            "In plaats van meteen een offerte te sturen, laten we liever eerst iets zien: binnen 24 uur "
-            "kunnen we vrijblijvend een eerste ontwerpvoorstel in jullie huisstijl maken.\n\n"
-            f"Lijkt het je leuk als ik iets voor {company_name} laat uitwerken?"
+            "Ik ben Chris van SuperMerch.\n\n"
+            "Merch nodig voor jullie team, event, klanten of campagne? Wij regelen het complete traject: "
+            "van productkeuze en design tot productie en levering. Eén aanspreekpunt, zonder gedoe met "
+            "verschillende leveranciers.\n\n"
+            f"Als je wilt, denk ik vrijblijvend mee over wat voor {company_name} interessant kan zijn "
+            "en kan ik direct een paar ideeën en een eerste ontwerpvoorstel uitwerken.\n\n"
+            f"Zal ik iets voor {company_name} uitwerken?"
         )
 
     from openai import OpenAI
@@ -178,43 +213,49 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
 
     if variant == "A":
         variant_instruction = f"""
-VARIANT A — persoonlijke aanleiding:
-- Open na 'Hi!' met één korte, natuurlijke zin over het bedrijf.
-- Gebruik alleen een concrete aanleiding als die echt uit de feitelijke aanleiding/samenvatting blijkt.
-- Als de aanleiding generiek is (zoals 'past binnen doelgroep'), doe dan GEEN nep-personalisatie en schrijf gewoon dat je het bedrijf tegenkwam.
-- Positioneer daarna SuperMerch kort.
-- Benoem maximaal twee relevante productvoorbeelden; niet standaard vier categorieën opsommen.
-- Kernbelofte: binnen 24 uur vrijblijvend een eerste ontwerpvoorstel in hun huisstijl.
+VARIANT A — persoonlijke aanleiding op basis van websitecontent:
+- Begin exact met:
+  Hi!
+
+  Ik ben Chris van SuperMerch.
+- Gebruik daarna maximaal één korte, natuurlijke zin over een CONCREET feit dat op de website is gevonden.
+- Gebruik uitsluitend de aangeleverde feiten. Geen aannames en geen nep-personalisatie.
+- Positioneer SuperMerch als partner die het hele merch-traject uit handen neemt.
+- Kernpropositie: productkeuze, design, productie en levering via één aanspreekpunt.
+- Koppel hooguit één of twee concrete merch-ideeën aan de gevonden aanleiding als dat logisch is.
+- Een eerste ontwerpvoorstel mag als laagdrempelige vervolgstap genoemd worden, maar is NIET de hoofdpropositie.
 - Eindig exact met: Zal ik iets voor {company_name} uitwerken?
 """
     else:
         variant_instruction = f"""
-VARIANT B — direct design-first:
-- Open na 'Hi!' kort en direct vanuit Chris van SuperMerch.
-- Leg de nadruk op eerst iets laten zien in plaats van meteen verkopen of een offerte sturen.
-- Positioneer SuperMerch als maker van custom kleding en merchandise voor bedrijven en teams.
-- Benoem hooguit twee productvoorbeelden als dat natuurlijk past.
-- Kernbelofte: binnen 24 uur vrijblijvend een eerste ontwerpvoorstel in hun huisstijl.
-- Eindig exact met: Lijkt het je leuk als ik iets voor {company_name} laat uitwerken?
+VARIANT B — weinig bruikbare websitecontent:
+- Begin exact met:
+  Hi!
+
+  Ik ben Chris van SuperMerch.
+- Doe GEEN verzonnen personalisatie.
+- Open daarna kort vanuit het probleem: merch nodig voor team, event, klanten of campagne.
+- Positioneer SuperMerch als partner die alles regelt: productkeuze, design, productie en levering.
+- Benoem één aanspreekpunt en minder gedoe als voordeel.
+- Een eerste ontwerpvoorstel mag als laagdrempelige vervolgstap genoemd worden, maar is NIET de hoofdpropositie.
+- Eindig exact met: Zal ik iets voor {company_name} uitwerken?
 """
 
     prompt = f"""
 Schrijf één korte Nederlandse eerste cold-outreachmail namens Chris van SuperMerch.
 
 Doel:
-- SuperMerch breed positioneren voor custom kleding en merchandise.
-- Niet focussen op onboarding, vacatures of employer branding als aanbod.
+- Nieuwe hoofdpropositie: SuperMerch is de partner in merch en ontzorgt het complete traject.
+- Verkoop primair complete ontzorging, niet 'gratis design'.
+- Van productkeuze en design tot productie en levering via één aanspreekpunt.
 - De mail moet voelen als een persoonlijk 1-op-1 bericht, niet als een bulkcampagne.
 - Maak geen claims of aannames die niet uit de aangeleverde feiten volgen.
-- De kernbelofte is een vrijblijvend eerste ontwerpvoorstel binnen 24 uur.
 
 Stijl:
-- Begin exact met: Hi!
-- Schrijf kort, menselijk, direct en zakelijk informeel.
-- Gebruik 'Bij SuperMerch maken we...' wanneer je het bedrijf introduceert.
+- Kort, menselijk, direct en zakelijk informeel.
 - Geen marketingjargon, overdreven enthousiasme of slijmerige formuleringen.
 - Geen links, knoppen, trackingtekst of afmeldtekst in de mailbody.
-- Geen eigen handtekening toevoegen; de verzendlaag voegt de Chris | Supermerch-handtekening toe.
+- Geen eigen handtekening toevoegen; de verzendlaag voegt de SuperMerch-handtekening toe.
 - Geef alleen de mailtekst terug, geen onderwerp en geen HTML.
 
 {variant_instruction}
@@ -228,8 +269,8 @@ Trigger: {trigger_label or 'geen aparte trigger'}
 Triggerbewijs: {trigger_evidence or 'geen apart triggerbewijs'}
 Bronpagina trigger: {trigger_source_url or 'onbekend'}
 
-Extra regel:
-- Als er een concrete trigger met bewijs is, gebruik die als natuurlijke aanleiding en koppel alleen het passende aanbod eraan.
+Extra regels:
+- Als er concreet triggerbewijs is, gebruik dat als natuurlijke aanleiding.
 - Noem geen bron-URL in de mail zelf.
 - Een vacature/groei-signaal alleen is te zwak voor stellige personalisatie; formuleer dan terughoudend.
 """

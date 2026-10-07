@@ -261,7 +261,7 @@ def _signature_html() -> str:
         'font-size:14px;line-height:1.55;color:#1f1f1f;">'
         '<p style="margin:0 0 14px 0;">Met vriendelijke groet / Kind regards,</p>'
         '<p style="margin:0 0 14px 0;"><strong>Chris | Supermerch</strong><br>'
-        'Premium custom apparel &amp; merchandise</p>'
+        'Jouw partner in merch &middot; compleet ontzorgd</p>'
         '<p style="margin:0;">'
         '🌐 <a href="https://supermerch.nl" style="color:#1f1f1f;text-decoration:none;">supermerch.nl</a><br>'
         '✉️ <a href="mailto:info@supermerch.nl" style="color:#1f1f1f;text-decoration:none;">info@supermerch.nl</a><br>'

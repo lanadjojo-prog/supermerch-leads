@@ -4,6 +4,8 @@ import threading
 from secrets import compare_digest
 from pathlib import Path
 from urllib.parse import quote, quote_plus
+import re
+from pydantic import BaseModel, Field
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -148,6 +150,43 @@ def health(background_tasks: BackgroundTasks):
         db.close()
 
     return {"ok": True, "automation_triggered": True, "tender_radar": tender}
+
+
+class QuoteNotification(BaseModel):
+    to: str = Field(min_length=6, max_length=180)
+    subject: str = Field(min_length=5, max_length=200)
+    content: str = Field(min_length=12, max_length=6500)
+    reference: str = Field(pattern=r"^SMQ-[A-F0-9]{20}$")
+
+
+@app.post("/api/internal/quote-mail")
+def send_customer_quote_notification(
+    payload: QuoteNotification, request: Request, db: Session = Depends(get_db)
+):
+    """Isolated transactional Zoho message relay for Shopify Operations.
+
+    Uses the already connected Zoho mailbox; does not enter the lead outreach
+    queue or count against the 30-per-day prospecting limit.
+    """
+    token = request.headers.get("X-Quote-Mail-Token") or ""
+    if (len(settings.quote_mail_token) < 48 or
+            not compare_digest(token, settings.quote_mail_token)):
+        raise HTTPException(401, "Unauthorized")
+    email = payload.to.strip().lower()
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[A-Za-z]{2,}", email):
+        raise HTTPException(422, "Invalid recipient")
+    if not zoho_mail.connected(db):
+        raise HTTPException(503, "Zoho Mail is not connected")
+    try:
+        result = zoho_mail.send_email(
+            db, email, payload.subject, payload.content,
+            cc_address="info@supermerch.nl")
+    except Exception:
+        logger.exception("Quote transactional mail could not be sent")
+        raise HTTPException(503, "Zoho Mail could not confirm delivery")
+    return {"ok": True, "sent": True,
+            "provider": "zoho",
+            "accepted": bool(result)}
 
 
 @app.post("/api/internal/discovery/places")

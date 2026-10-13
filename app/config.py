@@ -36,6 +36,7 @@ class Settings:
     daily_job_token: str = os.getenv("DAILY_JOB_TOKEN", "")
     dropdesk_storage_key: str = os.getenv("DROPDESK_STORAGE_KEY", "")
     discovery_bridge_token: str = os.getenv("DISCOVERY_BRIDGE_TOKEN", "")
+    quote_mail_token: str = os.getenv("SUPERMERCH_QUOTE_MAIL_TOKEN", "")
     local_timezone: ZoneInfo = ZoneInfo(os.getenv("LOCAL_TIMEZONE", "Europe/Amsterdam"))
     automation_enabled: bool = os.getenv("AUTOMATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
     automation_start_hour: int = _int_env("AUTOMATION_START_HOUR", 9)

@@ -270,7 +270,8 @@ def _signature_html() -> str:
     )
 
 
-def send_email(db: Session, to_address: str, subject: str, content: str) -> dict:
+def send_email(db: Session, to_address: str, subject: str, content: str,
+               cc_address: str | None = None) -> dict:
     row = db.scalar(select(MailIntegration).where(MailIntegration.provider == PROVIDER))
     if not row:
         raise RuntimeError("Zoho Mail is niet verbonden.")
@@ -283,6 +284,8 @@ def send_email(db: Session, to_address: str, subject: str, content: str) -> dict
         "content": _to_html_email(content) + _signature_html(),
         "mailFormat": "html",
     }
+    if cc_address and cc_address.lower() != to_address.lower():
+        body["ccAddress"] = cc_address
 
     access_token = refresh_access_token(refresh_token)
     with httpx.Client(timeout=30) as client:

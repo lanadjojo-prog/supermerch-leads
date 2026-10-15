@@ -50,25 +50,12 @@ def _claim_hour_slot(db, slot_id: str) -> ChatCommand | None:
 
 
 def run_automation_pass(db) -> dict:
-    now_local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+    """Deduplicate every wake source to one automation pass per Amsterdam hour.
 
-    if not settings.automation_enabled:
-        return {"ok": True, "status": "automation_disabled"}
-
-    if not (
-        settings.automation_start_hour
-        <= now_local.hour
-        < settings.automation_end_hour
-    ):
-        return {
-            "ok": True,
-            "status": "outside_window",
-            "local_time": now_local.isoformat(),
-        }
-
-    result = run_daily_lead_engine(db)
-    logger.warning("Lead Engine pass result: %s", result)
-    return result
+    Health checks and the in-process fallback can run multiple times within
+    an hour; always share the persistent ChatCommand slot with scheduled jobs.
+    """
+    return run_current_automation_slot(db)
 
 
 def run_current_automation_slot(db) -> dict:

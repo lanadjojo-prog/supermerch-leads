@@ -309,3 +309,39 @@ def send_email(db: Session, to_address: str, subject: str, content: str,
     if status.get("code") not in (200, 201):
         raise RuntimeError(f"Zoho Mail fout: {status.get('description') or payload}")
     return payload
+
+def save_draft(db: Session, *, to_address: str, subject: str, content: str) -> dict:
+    """Save to Zoho's Drafts folder. IMPORTANT: never send the message.
+
+    Zoho's /messages endpoint sends immediately unless the explicit mode=draft
+    attribute is present. Keep this API separate from send_email.
+    """
+    row = db.scalar(select(MailIntegration).where(MailIntegration.provider == PROVIDER))
+    if not row:
+        raise RuntimeError("Zoho Mail is niet verbonden.")
+    if not to_address or "@" not in to_address or not subject or not content:
+        raise ValueError("Concept mist een ontvanger, onderwerp of inhoud.")
+
+    body = {
+        "mode": "draft",
+        "fromAddress": row.email_address,
+        "toAddress": to_address,
+        "subject": subject,
+        "content": _to_html_email(content) + _signature_html(),
+        "mailFormat": "html",
+    }
+    access_token = refresh_access_token(_decrypt(row.refresh_token_encrypted))
+    endpoint = f"{settings.zoho_mail_base}/api/accounts/{row.account_id}/messages"
+    with httpx.Client(timeout=30) as client:
+        response = client.post(endpoint, headers=_headers(access_token), json=body)
+        if response.status_code == 401:
+            _invalidate_access_token()
+            access_token = refresh_access_token(_decrypt(row.refresh_token_encrypted), force=True)
+            response = client.post(endpoint, headers=_headers(access_token), json=body)
+        response.raise_for_status()
+        payload = response.json()
+
+    status = payload.get("status") or {}
+    if str(status.get("code")) not in ("200", "201"):
+        raise RuntimeError("Zoho accepteerde het opslaan van het concept niet.")
+    return payload

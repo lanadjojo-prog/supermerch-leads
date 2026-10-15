@@ -296,6 +296,67 @@ def _zoho_send_self_test():
         db.close()
 
 
+def _zoho_draft_self_test():
+    """Save precisely one internal draft to the linked mailbox. No mail is sent."""
+    from datetime import datetime
+    from sqlalchemy import select
+    from sqlalchemy.exc import IntegrityError
+    from app.database import SessionLocal
+    from app.models import ChatCommand, MailIntegration
+    from app.services import zoho_mail
+
+    db = SessionLocal()
+    key = "zoho-draft-selftest-workspace2-v1"
+    try:
+        if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == key)):
+            print("ZOHO_DRAFT_SELFTEST_SKIPPED duplicate_prevented=True", flush=True)
+            return
+        mailbox = db.scalar(select(MailIntegration).where(MailIntegration.provider == "zoho"))
+        if not mailbox:
+            print("ZOHO_DRAFT_SELFTEST_FAILED no_linked_mailbox=True", flush=True)
+            return
+        claim = ChatCommand(command_id=key, action="zoho_draft_selftest", status="running")
+        db.add(claim)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            print("ZOHO_DRAFT_SELFTEST_SKIPPED duplicate_prevented=True", flush=True)
+            return
+        try:
+            zoho_mail.save_draft(
+                db,
+                to_address=mailbox.email_address,
+                subject="SuperMerch - test van Zoho-concepten (niet versturen)",
+                content=(
+                    "Dit is een testconcept. De leadmachine heeft dit als concept "
+                    "opgeslagen, zonder een bericht te versturen. "
+                    "Vanaf morgen worden nieuwe bedrijven in concepten voorbereid."
+                ),
+            )
+            claim.status = "complete"
+            claim.finished_at = datetime.utcnow()
+            db.commit()
+            print("ZOHO_DRAFT_SELFTEST_OK saved_to_drafts=True emails_sent=0", flush=True)
+        except Exception as exc:
+            db.rollback()
+            claim = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+            if claim:
+                claim.status = "error"
+                claim.finished_at = datetime.utcnow()
+                db.commit()
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None)
+            print(
+                f"ZOHO_DRAFT_SELFTEST_FAILED error_type={type(exc).__name__} "
+                f"http_status={status if isinstance(status, int) else 'none'} "
+                "emails_sent=0",
+                flush=True,
+            )
+    finally:
+        db.close()
+
+
 def main():
     _require_postgres_tls()
     missing = missing_configuration()
@@ -315,6 +376,8 @@ def main():
         _lead_readiness_diagnostic()
     if os.environ.get("ZOHO_SELF_TEST", "").strip().lower() in ("1", "true", "yes"):
         _zoho_send_self_test()
+    if os.environ.get("ZOHO_DRAFT_SELF_TEST", "").strip().lower() in ("1", "true", "yes"):
+        _zoho_draft_self_test()
     print("Workspace 2 prerequisites present. Starting app; discovery_enabled=" + str(discovery_enabled) + "; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [

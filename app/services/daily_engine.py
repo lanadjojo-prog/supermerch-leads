@@ -13,6 +13,7 @@ from ..models import Campaign, Lead
 from . import zoho_mail
 from .outreach_delivery import DailySendLimitReached, remaining_today, send_lead, sent_today
 from .pipeline import run_campaign
+from .draft_pipeline import prepare_new_zoho_drafts
 
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,22 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
 
     run_goal = min(remaining, settings.daily_send_batch)
     sent_this_run = failed_sends = searches_run = created = qualified = trigger_hits = 0
+    drafts_created = draft_failures = 0
+    draft_batch = min(5, max(0, settings.daily_send_batch))
+
+    def make_new_drafts():
+        nonlocal drafts_created, draft_failures
+        if draft_batch <= drafts_created + draft_failures:
+            return
+        result = prepare_new_zoho_drafts(
+            db, per_run=draft_batch - drafts_created - draft_failures, daily_limit=30
+        )
+        drafts_created += result["drafts_created"]
+        draft_failures += result["attempts_failed"]
+        logger.warning("Zoho concepts run: %s", result)
+
+    if not settings.automated_outreach_enabled:
+        make_new_drafts()
 
     sent_now, failed_now = _send_candidates(
         db,
@@ -98,6 +115,8 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     if not settings.automated_outreach_enabled or sent_this_run < run_goal:
         for category_name, query, region in iter_daily_searches(now_local.date()):
             if settings.automated_outreach_enabled and (sent_this_run >= run_goal or remaining_today(db) <= 0):
+                break
+            if not settings.automated_outreach_enabled and drafts_created + draft_failures >= draft_batch:
                 break
             if searches_run >= settings.auto_searches_per_run:
                 break
@@ -143,6 +162,9 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             qualified += int(result.get("qualified", 0))
             trigger_hits += int(result.get("trigger_hits", 0))
 
+            if not settings.automated_outreach_enabled:
+                make_new_drafts()
+
             sent_now, failed_now = _send_candidates(
                 db,
                 day_iso=day_iso,
@@ -164,8 +186,10 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         "qualified": qualified,
         "trigger_hits": trigger_hits,
         "send_failed": failed_sends,
+        "zoho_drafts_created": drafts_created,
+        "zoho_draft_attempts_failed": draft_failures,
         "status": (
-            "discovery_only" if not settings.automated_outreach_enabled else
+            "drafts_only" if not settings.automated_outreach_enabled else
             "daily_target_reached"
             if total_today >= settings.daily_send_target
             else "continue_next_scheduled_run"

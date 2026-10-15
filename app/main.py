@@ -304,7 +304,9 @@ def _automation_status_payload(db: Session) -> dict:
         settings.automation_enabled
         and settings.automation_start_hour <= now_local.hour < settings.automation_end_hour
     )
-    if sent >= settings.daily_send_target:
+    if not settings.automated_outreach_enabled:
+        label = "Leadonderzoek actief · automatische acquisitiemails uit" if inside_window else "Leadonderzoek gepland · automatische acquisitiemails uit"
+    elif sent >= settings.daily_send_target:
         label = "Dagdoel bereikt"
     elif running:
         label = "Engine actief"

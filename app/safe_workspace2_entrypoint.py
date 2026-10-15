@@ -59,12 +59,11 @@ def main():
         port = int(os.environ.get("PORT", "10000"))
         ThreadingHTTPServer(("0.0.0.0", port), MigrationStatus).serve_forever()
         return
-    if os.environ.get("AUTOMATION_ENABLED", "").strip().lower() not in ("0", "false", "no"):
-        # Enabling prospecting must be a deliberate final step after acceptance
-        # tests, independent of merely restoring database credentials.
-        print("Refusing to boot while outreach is not explicitly paused.", flush=True)
+    outreach_enabled = os.environ.get("AUTOMATION_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    if outreach_enabled and os.environ.get("LEADS_GO_LIVE_APPROVED", "").strip().lower() not in ("1", "true", "yes"):
+        print("Refusing to enable outreach without explicit migration completion approval.", flush=True)
         sys.exit(1)
-    print("Workspace 2 prerequisites present. Starting app, with outreach paused.", flush=True)
+    print("Workspace 2 prerequisites present. Starting app; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [
         "gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "1",

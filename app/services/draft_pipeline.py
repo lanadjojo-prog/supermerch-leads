@@ -135,6 +135,14 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             break
         if not _official_email_source(lead):
             continue
+        # An address can occur on multiple websites. Do not prepare mail for
+        # any address already known from another old or new lead.
+        previously_known_email = db.scalar(select(Lead.id).where(
+            func.lower(Lead.email) == lead.email.lower(),
+            Lead.id != lead.id,
+        ).limit(1))
+        if previously_known_email is not None:
+            continue
         key = f"zoho-draft-lead-{lead.id}"
         if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == key)):
             continue
@@ -164,6 +172,8 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             command.status = "complete"
             command.finished_at = datetime.utcnow()
             payload = response.get("data") or {}
+            if not isinstance(payload, dict):
+                payload = {}
             command.result = json.dumps({
                 "lead_id": lead.id, "company": lead.company_name,
                 "recipient": lead.email, "subject": subject,

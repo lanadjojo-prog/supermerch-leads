@@ -128,6 +128,52 @@ class MigrationStatus(BaseHTTPRequestHandler):
         return
 
 
+def _non_sending_zoho_diagnostic():
+    """Read-only mailbox and OAuth probe. Never calls the send-email endpoint.
+
+    Enabled only on demand via ZOHO_DRY_RUN_CHECK for migration testing.
+    Do not log tokens, mail addresses, full API responses or database URLs.
+    """
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import MailIntegration
+    from app.services import zoho_mail
+
+    db = SessionLocal()
+    try:
+        row = db.scalar(select(MailIntegration).where(MailIntegration.provider == "zoho"))
+        if row is None:
+            print("ZOHO_DRY_RUN_FAILED reason=stored_mailbox_missing emails_sent=0", flush=True)
+            return
+        token = zoho_mail.refresh_access_token(zoho_mail._decrypt(row.refresh_token_encrypted))
+        accounts = zoho_mail.get_accounts(token)
+        found = any(
+            zoho_mail._account_id(account) == str(row.account_id)
+            for account in accounts if isinstance(account, dict)
+        )
+        result = "OK" if found else "FAILED"
+        print(
+            f"ZOHO_DRY_RUN_{result} oauth_refresh=ok account_read=ok "
+            f"linked_account_found={found} emails_sent=0",
+            flush=True,
+        )
+    except Exception as exc:
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+        category = (
+            "oauth_or_account_http_failure" if status else
+            "connection_or_authorization_failure"
+        )
+        print(
+            f"ZOHO_DRY_RUN_FAILED category={category} "
+            f"http_status={status if isinstance(status, int) else 'none'} "
+            "emails_sent=0",
+            flush=True,
+        )
+    finally:
+        db.close()
+
+
 def main():
     _require_postgres_tls()
     missing = missing_configuration()
@@ -140,6 +186,8 @@ def main():
     if outreach_enabled and os.environ.get("LEADS_GO_LIVE_APPROVED", "").strip().lower() not in ("1", "true", "yes"):
         print("Refusing to enable outreach without explicit migration completion approval.", flush=True)
         sys.exit(1)
+    if os.environ.get("ZOHO_DRY_RUN_CHECK", "").strip().lower() in ("1", "true", "yes"):
+        _non_sending_zoho_diagnostic()
     print("Workspace 2 prerequisites present. Starting app; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [

@@ -39,6 +39,7 @@ class Settings:
     quote_mail_token: str = os.getenv("SUPERMERCH_QUOTE_MAIL_TOKEN", "")
     local_timezone: ZoneInfo = ZoneInfo(os.getenv("LOCAL_TIMEZONE", "Europe/Amsterdam"))
     automation_enabled: bool = os.getenv("AUTOMATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    automated_outreach_enabled: bool = os.getenv("AUTOMATED_OUTREACH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     automation_start_hour: int = _int_env("AUTOMATION_START_HOUR", 9)
     automation_end_hour: int = _int_env("AUTOMATION_END_HOUR", 19)
 

@@ -20,10 +20,11 @@ from .tender_routes import router as tender_router
 from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .models import Campaign, Lead, LeadTrigger, MailIntegration, TenderOpportunity, TenderScanRun
+from .models import Campaign, Lead, LeadTrigger, MailIntegration, TenderOpportunity, TenderScanRun, ChatCommand
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
+from .services.draft_pipeline import _today_utc_bounds
 from .services.discovery import discover_google_places
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -291,6 +292,13 @@ def run_automation_now(background_tasks: BackgroundTasks):
 
 def _automation_status_payload(db: Session) -> dict:
     sent = sent_today(db)
+    start, end, _ = _today_utc_bounds()
+    drafts_created = int(db.scalar(select(func.count(ChatCommand.id)).where(
+        ChatCommand.action == "zoho_draft",
+        ChatCommand.status == "complete",
+        ChatCommand.created_at >= start,
+        ChatCommand.created_at < end,
+    )) or 0)
     latest_auto = db.scalar(
         select(Campaign)
         .where(Campaign.name.like("AUTO %"))
@@ -305,7 +313,7 @@ def _automation_status_payload(db: Session) -> dict:
         and settings.automation_start_hour <= now_local.hour < settings.automation_end_hour
     )
     if not settings.automated_outreach_enabled:
-        label = "Leadonderzoek actief · automatische acquisitiemails uit" if inside_window else "Leadonderzoek gepland · automatische acquisitiemails uit"
+        label = "Nieuwe leads en Zoho-concepten worden voorbereid · geen automatische verzending" if inside_window else "Leadonderzoek en Zoho-concepten gepland · geen automatische verzending"
     elif sent >= settings.daily_send_target:
         label = "Dagdoel bereikt"
     elif running:
@@ -319,6 +327,8 @@ def _automation_status_payload(db: Session) -> dict:
         "running": running,
         "label": label,
         "sent_today": sent,
+        "drafts_created_today": drafts_created,
+        "draft_target": 30,
         "daily_target": settings.daily_send_target,
         "remaining": max(0, settings.daily_send_target - sent),
         "campaign": (

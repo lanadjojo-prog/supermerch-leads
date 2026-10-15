@@ -1,8 +1,9 @@
 name: SuperMerch Leads Workspace 2 wake-up
 on:
   schedule:
-    # 07-18 UTC covers 09-19 Europe/Amsterdam in summer/winter.
-    - cron: '17 7-18 * * *'
+    # Wake once per Amsterdam business hour. DST checked by the step.
+    # Scheduled GitHub Actions may start a few minutes late.
+    - cron: '0 7-17 * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 7
     steps:
+      - name: Check local Amsterdam business-hour window
+        id: local_time
+        shell: bash
+        run: |
+          hour="$(TZ=Europe/Amsterdam date +%H)"
+          if [ "$hour" -ge 9 ] && [ "$hour" -lt 19 ]; then
+            echo "in_business_hours=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "in_business_hours=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Wake Workspace 2 through health endpoint
+        if: steps.local_time.outputs.in_business_hours == 'true'
         run: |
           curl --fail --show-error --silent --max-time 160 \
             --retry 2 --retry-delay 8 --retry-all-errors \

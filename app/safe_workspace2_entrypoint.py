@@ -174,6 +174,62 @@ def _non_sending_zoho_diagnostic():
         db.close()
 
 
+def _lead_readiness_diagnostic():
+    """Non-sending health check of deduplication, lead inventory and Places API.
+
+    Does not alter leads/campaigns and never invokes an email send method.
+    """
+    from sqlalchemy import func, select
+    from app.database import SessionLocal
+    from app.models import Campaign, Lead, ChatCommand
+    from app.services.discovery import discover_google_places
+    from app.config import settings
+
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            select(Lead.status, func.count(Lead.id)).group_by(Lead.status)
+        ).all()
+        statuses = {str(status): int(n) for status, n in rows}
+        campaigns = int(db.scalar(select(func.count(Campaign.id))) or 0)
+        sends_logged = int(db.scalar(select(func.count(ChatCommand.id)).where(
+            ChatCommand.action == "outreach_send",
+            ChatCommand.status == "complete"
+        )) or 0)
+        eligible = int(db.scalar(select(func.count(Lead.id)).where(
+            Lead.status == "approved",
+            Lead.email.is_not(None),
+            Lead.outreach_text.is_not(None)
+        )) or 0)
+        print(
+            "LEADS_READINESS_DB_OK "
+            f"campaigns={campaigns} total_leads={sum(statuses.values())} "
+            f"approved_with_email_and_draft={eligible} "
+            f"review_pending={statuses.get('ready_for_review', 0)} "
+            f"contacted={statuses.get('contacted', 0)} "
+            f"send_history={sends_logged} emails_sent=0",
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"LEADS_READINESS_DB_FAILED category={type(exc).__name__} emails_sent=0", flush=True)
+    finally:
+        db.close()
+
+    try:
+        matches = discover_google_places("carnavalsvereniging", "Oosterhout", 1)
+        print(
+            f"LEADS_READINESS_PLACES_OK results={len(matches)} emails_sent=0",
+            flush=True,
+        )
+    except Exception as exc:
+        print(f"LEADS_READINESS_PLACES_FAILED category={type(exc).__name__} emails_sent=0", flush=True)
+    print(
+        "LEADS_READINESS_AI_CONFIGURED=" + str(bool(settings.openai_api_key))
+        + " emails_sent=0",
+        flush=True,
+    )
+
+
 def main():
     _require_postgres_tls()
     missing = missing_configuration()
@@ -188,6 +244,8 @@ def main():
         sys.exit(1)
     if os.environ.get("ZOHO_DRY_RUN_CHECK", "").strip().lower() in ("1", "true", "yes"):
         _non_sending_zoho_diagnostic()
+    if os.environ.get("LEADS_READINESS_CHECK", "").strip().lower() in ("1", "true", "yes"):
+        _lead_readiness_diagnostic()
     print("Workspace 2 prerequisites present. Starting app; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [

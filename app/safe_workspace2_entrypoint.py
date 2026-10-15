@@ -230,6 +230,72 @@ def _lead_readiness_diagnostic():
     )
 
 
+def _zoho_send_self_test():
+    """One-time send test ONLY to the Zoho account's own address.
+
+    A durable claim is recorded before calling Zoho so a cold-start retry
+    cannot accidentally send a second message.
+    """
+    from datetime import datetime
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import ChatCommand, MailIntegration
+    from app.services import zoho_mail
+
+    db = SessionLocal()
+    key = "zoho-self-test-ws2-2026-10-15-v1"
+    try:
+        if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == key)):
+            print("ZOHO_SELFTEST_SKIPPED already_attempted=True", flush=True)
+            return
+        row = db.scalar(select(MailIntegration).where(MailIntegration.provider == "zoho"))
+        if row is None or not row.email_address:
+            print("ZOHO_SELFTEST_FAILED category=own_mailbox_missing", flush=True)
+            return
+        job = ChatCommand(command_id=key, action="zoho_self_test", status="running")
+        db.add(job)
+        db.commit()
+        try:
+            zoho_mail.send_email(
+                db,
+                to_address=row.email_address,
+                subject="SuperMerch Leadmachine - technische verzendtest",
+                content=(
+                    "Dit is een eenmalige interne verzendtest vanuit de herstelde "
+                    "SuperMerch Leadmachine. Er is geen acquisitiemail naar een "
+                    "externe lead verzonden."
+                ),
+            )
+            job.status = "complete"
+            job.finished_at = datetime.utcnow()
+            db.commit()
+            print("ZOHO_SELFTEST_OK sent_to=linked_mailbox external_leads_contacted=0", flush=True)
+        except Exception as exc:
+            db.rollback()
+            job = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+            if job:
+                job.status = "error"
+                job.finished_at = datetime.utcnow()
+                db.commit()
+            response = getattr(exc, "response", None)
+            status = getattr(response, "status_code", None)
+            print(
+                f"ZOHO_SELFTEST_FAILED category={type(exc).__name__} "
+                f"http_status={status if isinstance(status, int) else 'none'} "
+                "external_leads_contacted=0",
+                flush=True,
+            )
+    except Exception as exc:
+        db.rollback()
+        print(
+            f"ZOHO_SELFTEST_PRECHECK_FAILED category={type(exc).__name__} "
+            "external_leads_contacted=0",
+            flush=True,
+        )
+    finally:
+        db.close()
+
+
 def main():
     _require_postgres_tls()
     missing = missing_configuration()
@@ -246,6 +312,8 @@ def main():
         _non_sending_zoho_diagnostic()
     if os.environ.get("LEADS_READINESS_CHECK", "").strip().lower() in ("1", "true", "yes"):
         _lead_readiness_diagnostic()
+    if os.environ.get("ZOHO_SELF_TEST", "").strip().lower() in ("1", "true", "yes"):
+        _zoho_send_self_test()
     print("Workspace 2 prerequisites present. Starting app; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [

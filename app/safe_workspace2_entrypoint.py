@@ -29,6 +29,24 @@ def _require_postgres_tls():
     os.environ["DATABASE_URL"] = urlunsplit(parsed._replace(query=urlencode(params)))
 
 
+def _safe_database_failure_reason(exc):
+    """Return an actionable error category without exposing URI or credentials."""
+    msg = str(exc).lower()
+    if any(term in msg for term in ("could not translate host name", "name or service not known", "temporary failure in name resolution", "nodename nor servname provided")):
+        return "hostname_not_resolvable_use_external_database_url"
+    if any(term in msg for term in ("password authentication failed", "authentication failed for user")):
+        return "database_password_or_user_rejected"
+    if any(term in msg for term in ("connection timed out", "timeout expired", "operation timed out")):
+        return "database_network_timeout_check_ip_allowlist"
+    if any(term in msg for term in ("connection refused", "network is unreachable")):
+        return "database_host_unreachable_check_external_url"
+    if "no pg_hba.conf entry" in msg:
+        return "database_access_rejected_check_ip_allowlist_and_tls"
+    if any(term in msg for term in ("ssl", "tls", "certificate verify failed")):
+        return "database_tls_negotiation_failed"
+    return "database_connection_failed_check_external_url_and_access"
+
+
 def _existing_database_preflight():
     """Require the *existing* lead data and decryptable Zoho link before boot.
 
@@ -70,7 +88,7 @@ def _existing_database_preflight():
                     return "SESSION_SECRET (does not decrypt existing Zoho connection)"
     except Exception as exc:
         # Never expose passwords, URLs, SQL or provider tokens in logs/HTTP responses.
-        print("Workspace 2 DB preflight failed:", type(exc).__name__, flush=True)
+        print("Workspace 2 DB preflight failed:", type(exc).__name__, _safe_database_failure_reason(exc), flush=True)
         return "DATABASE_URL (connection unavailable: check external URL, TLS and IP allowlist)"
     return ""
 

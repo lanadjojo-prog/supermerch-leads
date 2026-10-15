@@ -4,6 +4,7 @@ import html
 import json
 import logging
 import re
+import time
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 import httpx
@@ -31,6 +32,7 @@ SUPPLIER_TERMS = ("leverancier", "leveranciers", "inkoop", "inkoper", "procureme
 GENERIC_LOCALPARTS = ("inkoop", "procurement", "leveranciers", "leverancier", "offerte", "offertes", "zakelijk", "business", "aanbesteding", "aanbesteden")
 EXCLUDED_DOMAINS = ("tenderned.nl", "linkedin.com", "facebook.com", "instagram.com", "x.com", "twitter.com", "youtube.com", "wikipedia.org", "rocketreach.co", "allebiz.nl", "raiselens.com", "companyinfo.nl", "drimble.nl", "oozo.nl", "telefoonboek.nl", "openingstijden.nl", "bloomberg.com")
 USER_AGENT = "SuperMerch Tender Radar/1.1 (+https://supermerch.nl)"
+_web_search_circuit_open_until = 0.0
 
 def _extract_emails(text: str) -> list[str]:
     found=[]
@@ -69,14 +71,15 @@ def _unwrap_ddg(href: str) -> str:
     return href
 
 def _search_official_sites(buyer: str) -> list[str]:
-    if not buyer:
+    global _web_search_circuit_open_until
+    if not buyer or time.monotonic() < _web_search_circuit_open_until:
         return []
     queries=[f'"{buyer}" inkoop leveranciers contact', f'"{buyer}" contact']
     results=[]
     headers={"User-Agent": USER_AGENT}
     for query in queries:
         try:
-            r=httpx.get("https://html.duckduckgo.com/html/", params={"q":query}, headers=headers, timeout=12, follow_redirects=True)
+            r=httpx.get("https://html.duckduckgo.com/html/", params={"q":query}, headers=headers, timeout=6, follow_redirects=True)
             r.raise_for_status()
             soup=BeautifulSoup(r.text, "html.parser")
             for a in soup.select("a.result__a, .result a"):
@@ -94,8 +97,14 @@ def _search_official_sites(buyer: str) -> list[str]:
                     continue
                 score=(host_score * 10) + label_score
                 results.append((score,url))
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            # Search provider is unavailable: do not spend minutes retrying it
+            # for every tender on every Render cold start.
+            _web_search_circuit_open_until = time.monotonic() + 1800
+            logger.warning("Tender contact search temporarily unavailable (%s); pausing for 30 minutes", type(exc).__name__)
+            break
         except Exception as exc:
-            logger.warning("Tender contact web search failed for %s: %s", buyer, exc)
+            logger.warning("Tender contact web search failed (%s)", type(exc).__name__)
     seen=set(); ordered=[]
     for _,url in sorted(results, key=lambda x:x[0], reverse=True):
         host=(urlparse(url).hostname or "").lower().removeprefix("www.")
@@ -247,12 +256,12 @@ def _send_if_eligible(db: Session, row: TenderOutreach) -> bool:
         logger.exception("Tender outreach send failed id=%s", row.id if row else "?")
         return False
 
-def prepare_tender_outreach_batch(db: Session, limit: int=50, send_limit: int=5) -> dict:
+def prepare_tender_outreach_batch(db: Session, limit: int=10, send_limit: int=0) -> dict:
     tenders=db.scalars(select(TenderOpportunity).where(TenderOpportunity.status!="rejected").order_by(TenderOpportunity.ai_score.desc(),TenderOpportunity.created_at.desc()).limit(limit)).all()
     stats={"prepared":0,"email_allowed":0,"review_required":0,"tenderned":0,"contact_missing":0,"sent":0}
     for tender in tenders:
         try:
-            row=prepare_tender_outreach(db,tender,force=True)
+            row=prepare_tender_outreach(db,tender,force=False)
             stats["prepared"]+=1
             stats[row.contact_route]=stats.get(row.contact_route,0)+1
             if stats["sent"]<send_limit and _send_if_eligible(db,row): stats["sent"]+=1

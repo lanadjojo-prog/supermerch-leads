@@ -10,6 +10,25 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+def _require_postgres_tls():
+    """Default cross-workspace PostgreSQL connections to encrypted transport.
+
+    The database URL is stored in Render's secret environment; never echo it.
+    Keep an explicit secure sslmode unchanged and never override an explicit
+    insecure configuration.
+    """
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url.startswith(("postgresql://", "postgres://", "postgresql+psycopg://")):
+        return
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    parsed = urlsplit(url)
+    params = parse_qsl(parsed.query, keep_blank_values=True)
+    if any(key == "sslmode" for key, _ in params):
+        return
+    params.append(("sslmode", "require"))
+    os.environ["DATABASE_URL"] = urlunsplit(parsed._replace(query=urlencode(params)))
+
+
 def _existing_database_preflight():
     """Require the *existing* lead data and decryptable Zoho link before boot.
 
@@ -92,6 +111,7 @@ class MigrationStatus(BaseHTTPRequestHandler):
 
 
 def main():
+    _require_postgres_tls()
     missing = missing_configuration()
     if missing:
         print("Workspace 2 pending secure lead-data migration:", ", ".join(missing), flush=True)

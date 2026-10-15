@@ -95,7 +95,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     sent_this_run += sent_now
     failed_sends += failed_now
 
-    if sent_this_run < run_goal:
+    if not settings.automated_outreach_enabled or sent_this_run < run_goal:
         for category_name, query, region in iter_daily_searches(now_local.date()):
             if settings.automated_outreach_enabled and (sent_this_run >= run_goal or remaining_today(db) <= 0):
                 break

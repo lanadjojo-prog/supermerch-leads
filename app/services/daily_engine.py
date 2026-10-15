@@ -29,7 +29,7 @@ def _send_candidates(
     day_iso: str,
     max_successes: int,
 ) -> tuple[int, int]:
-    if max_successes <= 0:
+    if not settings.automated_outreach_enabled or max_successes <= 0:
         return 0, 0
 
     leads = db.scalars(
@@ -60,7 +60,7 @@ def _send_candidates(
 
 
 def _run_daily_lead_engine_impl(db: Session) -> dict:
-    if not zoho_mail.connected(db):
+    if settings.automated_outreach_enabled and not zoho_mail.connected(db):
         raise RuntimeError("Zoho Mail is niet verbonden.")
 
     now_local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
@@ -74,7 +74,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         settings.daily_send_target,
     )
 
-    if remaining <= 0:
+    if remaining <= 0 and settings.automated_outreach_enabled:
         return {
             "ok": True,
             "date": day_iso,
@@ -97,7 +97,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
 
     if sent_this_run < run_goal:
         for category_name, query, region in iter_daily_searches(now_local.date()):
-            if sent_this_run >= run_goal or remaining_today(db) <= 0:
+            if settings.automated_outreach_enabled and (sent_this_run >= run_goal or remaining_today(db) <= 0):
                 break
             if searches_run >= settings.auto_searches_per_run:
                 break
@@ -165,6 +165,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         "trigger_hits": trigger_hits,
         "send_failed": failed_sends,
         "status": (
+            "discovery_only" if not settings.automated_outreach_enabled else
             "daily_target_reached"
             if total_today >= settings.daily_send_target
             else "continue_next_scheduled_run"

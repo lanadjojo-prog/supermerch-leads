@@ -304,7 +304,8 @@ def main():
         port = int(os.environ.get("PORT", "10000"))
         ThreadingHTTPServer(("0.0.0.0", port), MigrationStatus).serve_forever()
         return
-    outreach_enabled = os.environ.get("AUTOMATION_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    discovery_enabled = os.environ.get("AUTOMATION_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+    outreach_enabled = discovery_enabled and os.environ.get("AUTOMATED_OUTREACH_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
     if outreach_enabled and os.environ.get("LEADS_GO_LIVE_APPROVED", "").strip().lower() not in ("1", "true", "yes"):
         print("Refusing to enable outreach without explicit migration completion approval.", flush=True)
         sys.exit(1)
@@ -314,7 +315,7 @@ def main():
         _lead_readiness_diagnostic()
     if os.environ.get("ZOHO_SELF_TEST", "").strip().lower() in ("1", "true", "yes"):
         _zoho_send_self_test()
-    print("Workspace 2 prerequisites present. Starting app; outreach_enabled=" + str(outreach_enabled), flush=True)
+    print("Workspace 2 prerequisites present. Starting app; discovery_enabled=" + str(discovery_enabled) + "; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [
         "gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "1",

@@ -1,0 +1,24 @@
+name: SuperMerch Leads Workspace 2 wake-up
+on:
+  schedule:
+    # 07-18 UTC covers 09-19 Europe/Amsterdam in summer/winter.
+    - cron: '17 7-18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supermerch-leads-ws2-wake
+  cancel-in-progress: true
+
+jobs:
+  wake-lead-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Wake Workspace 2 through health endpoint
+        run: |
+          curl --fail --show-error --silent --max-time 160 \
+            --retry 2 --retry-delay 8 --retry-all-errors \
+            https://supermerch-leads-ws2.onrender.com/health

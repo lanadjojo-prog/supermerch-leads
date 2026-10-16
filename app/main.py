@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+import os
 import logging
 import threading
 from secrets import compare_digest
@@ -76,6 +78,17 @@ async def lifespan(app: FastAPI):
         name="supermerch-tender-radar-startup",
         daemon=True,
     ).start()
+
+    # Optional date-scoped catch-up run (drafts only). On any other day this
+    # switch has no effect, so it cannot cause repeated catch-ups tomorrow.
+    catchup_date = os.getenv("LEAD_CATCHUP_ON_STARTUP_DATE", "").strip()
+    local_today = datetime.now(timezone.utc).astimezone(settings.local_timezone).date().isoformat()
+    if catchup_date and catchup_date == local_today:
+        threading.Thread(
+            target=_run_daily_engine_now_background,
+            name="supermerch-one-day-draft-catchup",
+            daemon=True,
+        ).start()
 
     scheduler_stop = threading.Event()
     scheduler_thread = threading.Thread(

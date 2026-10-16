@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -13,7 +14,7 @@ from ..models import Campaign, Lead
 from . import zoho_mail
 from .outreach_delivery import DailySendLimitReached, remaining_today, send_lead, sent_today
 from .pipeline import run_campaign
-from .draft_pipeline import prepare_new_zoho_drafts
+from .draft_pipeline import prepare_new_zoho_drafts, _today_utc_bounds, _today_draft_count
 
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,12 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     run_goal = min(remaining, settings.daily_send_batch)
     sent_this_run = failed_sends = searches_run = created = qualified = trigger_hits = 0
     drafts_created = draft_failures = 0
-    draft_batch = min(5, max(0, settings.daily_send_batch))
+    draft_start, draft_end, _ = _today_utc_bounds()
+    drafts_already_reserved = _today_draft_count(db, draft_start, draft_end)
+    draft_batch = min(30, max(0, settings.daily_send_batch), max(0, 30 - drafts_already_reserved))
+    # Keep an individual worker below Render's idle shutdown interval. Another
+    # scheduled wake resumes from the same deduplicated database state.
+    search_deadline = time.monotonic() + 9 * 60
 
     def make_new_drafts():
         nonlocal drafts_created, draft_failures
@@ -119,6 +125,9 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             if not settings.automated_outreach_enabled and drafts_created + draft_failures >= draft_batch:
                 break
             if searches_run >= settings.auto_searches_per_run:
+                break
+            if time.monotonic() >= search_deadline:
+                logger.warning("Lead Engine search time budget reached; continuing on next wake")
                 break
 
             campaign_name = (
@@ -174,6 +183,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             failed_sends += failed_now
 
     total_today = sent_today(db)
+    drafts_reserved_today = _today_draft_count(db, draft_start, draft_end)
     result = {
         "ok": True,
         "date": day_iso,
@@ -187,9 +197,12 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         "trigger_hits": trigger_hits,
         "send_failed": failed_sends,
         "zoho_drafts_created": drafts_created,
+        "zoho_drafts_reserved_today": drafts_reserved_today,
+        "zoho_drafts_remaining_today": max(0, 30 - drafts_reserved_today),
         "zoho_draft_attempts_failed": draft_failures,
         "status": (
-            "drafts_only" if not settings.automated_outreach_enabled else
+            ("draft_daily_target_reached" if drafts_reserved_today >= 30 else "drafts_only")
+            if not settings.automated_outreach_enabled else
             "daily_target_reached"
             if total_today >= settings.daily_send_target
             else "continue_next_scheduled_run"

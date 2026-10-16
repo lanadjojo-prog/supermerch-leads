@@ -130,9 +130,12 @@ def iter_daily_searches(day: date):
     categories = tuple(weighted_focus + priority + remaining)
     region_offset = (seed * 7) % len(regions)
 
-    for region_step in range(len(regions)):
-        region = regions[(region_offset + region_step) % len(regions)]
-        for category_step in range(len(categories)):
-            category = categories[(category_step + region_step) % len(categories)]
-            query = category.queries[(seed + region_step + category_step) % len(category.queries)]
+    # Interleave locations and niches, instead of exhausting all niches in one
+    # city first. This reduces repeated/previously-known companies in each
+    # daily batch while keeping the priority and Brabant weighting intact.
+    for round_index in range(len(categories)):
+        for region_step in range(len(regions)):
+            region = regions[(region_offset + region_step) % len(regions)]
+            category = categories[(round_index + region_step) % len(categories)]
+            query = category.queries[(seed + round_index + region_step) % len(category.queries)]
             yield category.name, query, region

@@ -1,11 +1,6 @@
 name: SuperMerch Leads Workspace 2 wake-up
 on:
-  schedule:
-    # Wake once per Amsterdam business hour. DST checked by the step.
-    # Scheduled GitHub Actions may start a few minutes late.
-    - cron: '0 7-17 * * *'
   workflow_dispatch:
-
 permissions:
   contents: read
 

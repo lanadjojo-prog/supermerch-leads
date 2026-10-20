@@ -1,12 +1,7 @@
 name: Wake SuperMerch Lead Engine
 
 on:
-  schedule:
-    # GitHub runs scheduled workflows only from the default branch.
-    # Twice an hour during the NL business-day window, including CET/CEST.
-    - cron: "0,30 7-18 * * *"
   workflow_dispatch:
-
 jobs:
   wake:
     runs-on: ubuntu-latest

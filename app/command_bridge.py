@@ -198,7 +198,7 @@ def process_startup_command() -> None:
                 recipient = str(item.get("to") or "").strip().lower()
                 subject = str(item.get("subject") or "").strip()
                 body = str(item.get("content") or "").strip()
-                if ("@" not in recipient or any(c in recipient for c in " \\t\\r\\n,;")
+                if ("@" not in recipient or any(ch.isspace() or ch in ",;" for ch in recipient)
                     or not subject or not body):
                     failed.append({"to": recipient, "reason": "invalid fields"})
                     continue

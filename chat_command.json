@@ -1,5 +1,5 @@
 {
-  "command_id": "curated-gripsocks-zoho-drafts-20261021-v1",
+  "command_id": "curated-gripsocks-zoho-drafts-20261021-v2",
   "action": "save_curated_zoho_drafts",
   "payload": {
     "drafts": [

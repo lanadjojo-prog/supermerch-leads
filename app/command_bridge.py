@@ -182,6 +182,78 @@ def process_startup_command() -> None:
                 ensure_ascii=False,
             )
 
+        elif action == "save_curated_zoho_drafts":
+            # Explicit user-requested mailbox drafts: NEVER send a message.
+            # Each item has a durable per-recipient reservation so a restart
+            # or uncertain Zoho network response will not duplicate the draft.
+            import hashlib
+            from sqlalchemy.exc import IntegrityError
+            if not zoho_mail.connected(db):
+                raise RuntimeError("Zoho Mail is not connected")
+            entries = payload.get("drafts") or []
+            if not isinstance(entries, list) or not 1 <= len(entries) <= 10:
+                raise ValueError("Provide between 1 and 10 curated drafts")
+            created, already, failed = [], [], []
+            for item in entries:
+                recipient = str(item.get("to") or "").strip().lower()
+                subject = str(item.get("subject") or "").strip()
+                body = str(item.get("content") or "").strip()
+                if ("@" not in recipient or any(c in recipient for c in " \\t\\r\\n,;")
+                    or not subject or not body):
+                    failed.append({"to": recipient, "reason": "invalid fields"})
+                    continue
+                digest = hashlib.sha256((recipient + "\\n" + subject).encode("utf-8")).hexdigest()[:28]
+                key = "curated-gripsocks-draft-" + digest
+                prior = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+                if prior is not None:
+                    already.append({"to": recipient, "status": prior.status})
+                    continue
+                claim = ChatCommand(command_id=key, action="manual_zoho_draft", status="running")
+                db.add(claim)
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                    already.append({"to": recipient, "status": "claimed_elsewhere"})
+                    continue
+                try:
+                    response = zoho_mail.save_draft(
+                        db, to_address=recipient, subject=subject, content=body
+                    )
+                    data = response.get("data") or {}
+                    if not isinstance(data, dict):
+                        data = {}
+                    claim.status = "complete"
+                    claim.finished_at = datetime.utcnow()
+                    claim.result = json.dumps({
+                        "to": recipient, "subject": subject,
+                        "zoho_message_id": str(data.get("messageId") or ""),
+                        "sent": False
+                    }, ensure_ascii=False)
+                    db.commit()
+                    created.append({"to": recipient, "subject": subject})
+                    logger.warning("Curated Zoho draft saved: recipient=%s sent=false", recipient)
+                except Exception as exc:
+                    db.rollback()
+                    claim = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+                    if claim is not None:
+                        claim.status = "error"
+                        claim.finished_at = datetime.utcnow()
+                        claim.result = type(exc).__name__[:90]
+                        db.commit()
+                    failed.append({"to": recipient, "reason": type(exc).__name__})
+                    logger.warning("Curated Zoho draft failed: recipient=%s type=%s sent=false", recipient, type(exc).__name__)
+            row.result = json.dumps({
+                "created_count": len(created), "already_count": len(already),
+                "failed_count": len(failed), "created": created,
+                "already": already, "failed": failed,
+                "emails_sent": 0
+            }, ensure_ascii=False)
+            logger.warning(
+                "Curated Zoho draft batch finished: created=%d already=%d failed=%d emails_sent=0",
+                len(created), len(already), len(failed)
+            )
+
         elif action == "send_direct_emails":
             if not zoho_mail.connected(db):
                 raise RuntimeError("Zoho Mail is not connected")

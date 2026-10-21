@@ -122,6 +122,66 @@ def process_startup_command() -> None:
                 },
                 ensure_ascii=False,
             )
+        elif action == "import_researched_drafts":
+            # Curated, public B2B contacts: create reviewable lead concepts only.
+            # This action NEVER calls a mail transport or approves leads.
+            from sqlalchemy import func
+            entries = payload.get("prospects") or []
+            if not isinstance(entries, list) or not 1 <= len(entries) <= 25:
+                raise ValueError("prospects must be a list of 1 to 25 entries")
+            name = str(payload.get("campaign_name") or "Research – reviewed concepts")[:160]
+            campaign = Campaign(
+                name=name,
+                niche=str(payload.get("niche") or "B2B gripsokken")[:160],
+                region=str(payload.get("region") or "Nederland")[:160],
+                search_query="Handmatig geverifieerde openbare zakelijke contactadressen",
+                target_count=len(entries),
+                status="completed",
+                last_run_at=datetime.utcnow(),
+            )
+            db.add(campaign)
+            db.flush()
+            created = []
+            skipped = []
+            for item in entries:
+                company = str(item.get("company_name") or "").strip()[:220]
+                domain = str(item.get("domain") or "").strip().lower().removeprefix("www.")[:220]
+                email = str(item.get("email") or "").strip().lower()[:220]
+                website = str(item.get("website") or "").strip()[:500]
+                email_source_url = str(item.get("email_source_url") or "").strip()[:500]
+                subject = str(item.get("subject") or "").strip()[:220]
+                body = str(item.get("body") or "").strip()
+                if not all((company, domain, website, email_source_url, subject, body)) or "@" not in email:
+                    raise ValueError("Incomplete manually verified prospect")
+                known = db.scalar(select(Lead.id).where(
+                    (func.lower(Lead.domain) == domain) |
+                    (func.lower(Lead.email) == email)
+                ).limit(1))
+                if known is not None:
+                    skipped.append({"company": company, "reason": "existing lead (domain or email)"})
+                    continue
+                lead = Lead(
+                    campaign_id=campaign.id, company_name=company, domain=domain,
+                    website=website, email=email, email_source_url=email_source_url,
+                    outreach_text=body, source="researched_public_business_contact",
+                    status="ready_for_review", score=85,
+                    industry="Indoor trampoline- en jumpcentra",
+                    recommended_offer="Gripsokken met antislip in eigen design + gratis vrijblijvend ontwerp",
+                    lead_reason="Conceptonderwerp: " + subject +
+                        " | Inhoud opgesteld voor een vrijblijvend ontwerpvoorstel.",
+                    score_reasons="Geselecteerd wegens directe toepassing van gripsokken in indoor leisure.",
+                )
+                db.add(lead)
+                created.append({"company": company, "email": email})
+            db.commit()
+            row.result = json.dumps(
+                {"campaign_id": campaign.id, "created_count": len(created),
+                 "skipped_count": len(skipped), "created": created,
+                 "skipped": skipped, "zoho_drafts_created": 0,
+                 "emails_sent": 0, "status": "review_only"},
+                ensure_ascii=False,
+            )
+
         elif action == "send_direct_emails":
             if not zoho_mail.connected(db):
                 raise RuntimeError("Zoho Mail is not connected")

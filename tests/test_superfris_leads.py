@@ -39,7 +39,7 @@ class SuperfrisPipelineTests(unittest.TestCase):
         self.assertEqual(fake.append.call_count, 1)
         args = fake.append.call_args.args
         self.assertEqual(args[0], "Drafts")
-        self.assertEqual(args[1], r"(\\Draft)")
+        self.assertEqual(args[1], r"(\Draft)")
         self.assertIn(b"info@example.nl", args[3])
         fake.logout.assert_called_once()
 

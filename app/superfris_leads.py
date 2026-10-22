@@ -255,9 +255,13 @@ def run_superfris_pass(db: Session) -> dict:
     """Idempotent hourly research + max 5 draft saves; safe-by-default off."""
     if os.getenv("SUPERFRIS_ENABLED", "false").lower() not in ("1", "true", "yes", "on"):
         return {"status": "disabled", "sent": 0}
+    if not os.getenv("SUPERFRIS_STRATO_PASSWORD", ""):
+        return {"status": "strato_mail_not_configured", "sent": 0}
     local_now = datetime.now(timezone.utc).astimezone(settings.local_timezone)
     if not (9 <= local_now.hour < 19):
         return {"status": "outside_window", "sent": 0}
+    if _draft_attempts_today(db) >= MAX_DRAFTS_PER_DAY:
+        return {"status": "daily_cap_reached", "draft_attempts_today": MAX_DRAFTS_PER_DAY, "sent": 0}
     if not _guard.acquire(blocking=False):
         return {"status": "already_running", "sent": 0}
     try:

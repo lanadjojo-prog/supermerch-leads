@@ -27,6 +27,7 @@ from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds
+from .superfris_leads import run_superfris_pass, superfris_stats  # registers isolated tables
 from .services.discovery import discover_google_places
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -273,6 +274,20 @@ async def internal_dropdesk_storage(request: Request):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     raise HTTPException(400, "Unsupported action")
+
+
+@app.post("/api/internal/superfris-lead-engine")
+def internal_superfris_lead_engine(request: Request, db: Session = Depends(get_db)):
+    """Run Superfris discovery + STRATO IMAP drafts. Never sends an email."""
+    token = request.headers.get("X-Automation-Token", "")
+    if not settings.daily_job_token or not compare_digest(token, settings.daily_job_token):
+        raise HTTPException(401, "Unauthorized")
+    return run_superfris_pass(db)
+
+
+@app.get("/api/superfris/status", dependencies=[Depends(auth)])
+def superfris_status(db: Session = Depends(get_db)):
+    return superfris_stats(db)
 
 
 @app.post("/api/internal/daily-lead-engine")

@@ -181,8 +181,9 @@ def _make_drafts(db: Session) -> int:
         SuperfrisLead.status == "ready",
     ).order_by(SuperfrisLead.created_at, SuperfrisLead.id).limit(quota * 3)).all()
     made = 0
+    attempted_this_pass = 0
     for lead in candidates:
-        if made >= quota or _draft_attempts_today(db) >= MAX_DRAFTS_PER_DAY:
+        if attempted_this_pass >= quota or _draft_attempts_today(db) >= MAX_DRAFTS_PER_DAY:
             break
         # Reserve BEFORE APPEND. A timeout can still mean a draft was created.
         attempt = SuperfrisDraftAttempt(lead_id=lead.id)
@@ -192,6 +193,7 @@ def _make_drafts(db: Session) -> int:
         except IntegrityError:
             db.rollback()
             continue
+        attempted_this_pass += 1
         try:
             _save_strato_draft(lead.email, lead.subject, lead.message)
         except Exception as exc:
@@ -285,7 +287,7 @@ def run_superfris_pass(db: Session) -> dict:
                 "status": "complete", "date": day,
                 "new_prospects": created, "drafts_created": drafted,
                 "draft_attempts_today": _draft_attempts_today(db),
-                "strato_connected": bool(os.getenv("SUPERFRIS_STRATO_PASSWORD")),
+                "strato_credentials_configured": bool(os.getenv("SUPERFRIS_STRATO_PASSWORD")),
                 "sent": 0,
             }
         except Exception as exc:

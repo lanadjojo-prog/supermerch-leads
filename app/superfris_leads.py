@@ -140,8 +140,50 @@ def _compose_message(company: str, region: str, category: str, offer: str, websi
     )
 
 
+def strato_mail_probe() -> dict:
+    """Read-only STRATO login/folder probe. Never fetches or sends messages."""
+    password = os.getenv("SUPERFRIS_STRATO_PASSWORD", "")
+    if not password:
+        return {"status": "not_configured", "drafts_folder_found": False}
+    server = None
+    try:
+        server = imaplib.IMAP4_SSL("imap.strato.de", 993, timeout=25)
+        server.login(MAILBOX, password)
+        code, folders = server.list()
+        if code != "OK":
+            return {"status": "folder_listing_failed", "drafts_folder_found": False}
+        folder = _identify_draft_folder(folders or [])
+        return {"status": "connected", "drafts_folder_found": bool(folder)}
+    except (imaplib.IMAP4.error, OSError, TimeoutError):
+        return {"status": "connection_failed", "drafts_folder_found": False}
+    finally:
+        if server is not None:
+            try:
+                server.logout()
+            except Exception:
+                pass
+
+
+def _identify_draft_folder(folders: list[bytes]) -> str | None:
+    """Find RFC 6154 \Drafts or the common mailbox folder names."""
+    for raw_line in folders:
+        if not raw_line:
+            continue
+        line = raw_line.decode("utf-8", errors="replace")
+        matches = re.search(r' "([^"]+)"\s*$', line)
+        mailbox = matches.group(1) if matches else line.rsplit(" ", 1)[-1].strip('"')
+        flags = line.split(")", 1)[0].lower()
+        basename = mailbox.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if "\\drafts" in flags or basename in {"drafts", "draft", "concepten", "entwuerfe", "entwürfe"}:
+            # RFC3501 quote mailbox names containing whitespace.
+            if '"' in mailbox or "\r" in mailbox or "\n" in mailbox:
+                continue
+            return mailbox
+    return None
+
+
 def _save_strato_draft(to_address: str, subject: str, content: str) -> None:
-    """APPEND to STRATO's documented Drafts IMAP folder; never calls SMTP."""
+    """APPEND to the mailbox's actual Drafts folder; never calls SMTP."""
     password = os.getenv("SUPERFRIS_STRATO_PASSWORD", "")
     if not password:
         raise RuntimeError("SUPERFRIS_STRATO_PASSWORD not configured")
@@ -155,12 +197,16 @@ def _save_strato_draft(to_address: str, subject: str, content: str) -> None:
     try:
         server.login(MAILBOX, password)
         code, folders = server.list()
-        if code != "OK" or not any(
-            (b'"Drafts"' in line or line.rstrip().endswith(b" Drafts"))
-            for line in (folders or []) if line
-        ):
-            raise RuntimeError("STRATO Drafts folder missing; create it in webmail")
-        code, _ = server.append("Drafts", r"(\Draft)", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+        if code != "OK":
+            raise RuntimeError("STRATO IMAP LIST failed")
+        folder = _identify_draft_folder(folders or [])
+        if not folder:
+            raise RuntimeError("STRATO Drafts folder missing")
+        mailbox = f'"{folder}"' if " " in folder else folder
+        code, _ = server.append(
+            mailbox, r"(\Draft)",
+            imaplib.Time2Internaldate(time.time()), msg.as_bytes()
+        )
         if code != "OK":
             raise RuntimeError("STRATO IMAP APPEND did not confirm draft")
     finally:

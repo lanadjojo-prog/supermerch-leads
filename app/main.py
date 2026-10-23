@@ -27,7 +27,7 @@ from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds
-from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe  # registers isolated tables
+from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest  # registers isolated tables
 from .services.discovery import discover_google_places
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -95,6 +95,20 @@ async def lifespan(app: FastAPI):
         threading.Thread(
             target=lambda: logger.warning("Superfris IMAP startup probe: %s", strato_mail_probe()),
             name="superfris-strato-probe",
+            daemon=True,
+        ).start()
+
+    if os.getenv("SUPERFRIS_DRAFT_SELFTEST_ON_STARTUP", "").strip().lower() in ("1", "true", "yes"):
+        def _run_superfris_draft_selftest():
+            db = SessionLocal()
+            try:
+                logger.warning("Superfris STRATO self-test: %s", run_strato_draft_selftest(db))
+            finally:
+                db.close()
+
+        threading.Thread(
+            target=_run_superfris_draft_selftest,
+            name="superfris-strato-draft-selftest",
             daemon=True,
         ).start()
 

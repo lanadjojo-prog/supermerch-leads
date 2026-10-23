@@ -165,7 +165,7 @@ def strato_mail_probe() -> dict:
 
 
 def _identify_draft_folder(folders: list[bytes]) -> str | None:
-    """Find RFC 6154 \Drafts or the common mailbox folder names."""
+    r"""Find RFC 6154 \Drafts or the common mailbox folder names."""
     for raw_line in folders:
         if not raw_line:
             continue
@@ -214,6 +214,43 @@ def _save_strato_draft(to_address: str, subject: str, content: str) -> None:
             server.logout()
         except Exception:
             pass
+
+
+def run_strato_draft_selftest(db: Session) -> dict:
+    """Write exactly one draft to the owner's own mailbox; never send or retry."""
+    key = "superfris-strato-imap-selftest-20261023-v1"
+    existing = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+    if existing:
+        return {"status": "already_attempted", "previous_status": existing.status, "sent": 0}
+    claim = ChatCommand(command_id=key, action="superfris_selftest", status="running")
+    db.add(claim)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return {"status": "already_attempted", "sent": 0}
+    try:
+        _save_strato_draft(
+            MAILBOX,
+            "Superfris – test concept in STRATO",
+            "Hallo,\n\nDit is een automatisch opgeslagen TESTCONCEPT voor de Superfris-leadmachine. "
+            "Dit bericht is NIET verzonden.\n\nGroet,\nSuperfris"
+        )
+        claim.status = "complete"
+        claim.finished_at = datetime.utcnow()
+        db.commit()
+        return {"status": "draft_saved", "recipient": "self", "sent": 0}
+    except Exception as exc:
+        db.rollback()
+        claim = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+        if claim:
+            claim.status = "error"
+            claim.finished_at = datetime.utcnow()
+            claim.result = type(exc).__name__[:100]
+            db.commit()
+        logger.warning("Superfris self-test draft unconfirmed: %s", type(exc).__name__)
+        return {"status": "draft_unconfirmed", "error_type": type(exc).__name__, "sent": 0}
+
 
 
 def _make_drafts(db: Session) -> int:

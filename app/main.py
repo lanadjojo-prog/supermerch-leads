@@ -120,6 +120,13 @@ async def lifespan(app: FastAPI):
         daemon=True,
     )
     scheduler_thread.start()
+    if os.getenv("SUPERFRIS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
+        threading.Thread(
+            target=_run_superfris_periodic,
+            args=(scheduler_stop,),
+            name="superfris-periodic-drafts",
+            daemon=True,
+        ).start()
     try:
         yield
     finally:
@@ -155,6 +162,13 @@ def _run_current_automation_background():
         logger.exception("Health wake Lead Engine failed")
     finally:
         db.close()
+
+
+def _run_superfris_periodic(stop_event: threading.Event):
+    """Reuse Workspace 2's running instance, with durable hourly deduplication."""
+    while not stop_event.is_set():
+        _run_superfris_background()
+        stop_event.wait(300)
 
 
 def _run_superfris_background():

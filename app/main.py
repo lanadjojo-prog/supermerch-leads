@@ -27,6 +27,7 @@ from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds
+from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe  # registers isolated tables
 from .services.discovery import discover_google_places
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -90,6 +91,13 @@ async def lifespan(app: FastAPI):
             daemon=True,
         ).start()
 
+    if os.getenv("SUPERFRIS_IMAP_PROBE_ON_STARTUP", "").strip().lower() in ("1", "true", "yes"):
+        threading.Thread(
+            target=lambda: logger.warning("Superfris IMAP startup probe: %s", strato_mail_probe()),
+            name="superfris-strato-probe",
+            daemon=True,
+        ).start()
+
     scheduler_stop = threading.Event()
     scheduler_thread = threading.Thread(
         target=run_automation_scheduler,
@@ -135,11 +143,26 @@ def _run_current_automation_background():
         db.close()
 
 
+def _run_superfris_background():
+    db = SessionLocal()
+    try:
+        result = run_superfris_pass(db)
+        logger.info("Superfris draft-only engine: %s", result)
+    except Exception:
+        logger.exception("Superfris draft-only engine failed")
+    finally:
+        db.close()
+
+
 @app.get("/health")
 def health(background_tasks: BackgroundTasks):
     # Every health hit wakes Render and immediately lets the engines continue.
     background_tasks.add_task(_run_current_automation_background)
     background_tasks.add_task(run_tender_scan_if_due_background)
+    if os.getenv("SUPERFRIS_ENABLED", "false").lower() in ("1", "true", "yes", "on"):
+        # Existing /health wake keeps a separate Superfris worker active.
+        # No new service/cron costs; daily cap and database slot dedupe in pipeline.
+        threading.Thread(target=_run_superfris_background, name="superfris-wake", daemon=True).start()
 
     db = SessionLocal()
     try:
@@ -273,6 +296,26 @@ async def internal_dropdesk_storage(request: Request):
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     raise HTTPException(400, "Unsupported action")
+
+
+@app.post("/api/internal/superfris-lead-engine")
+def internal_superfris_lead_engine(request: Request, db: Session = Depends(get_db)):
+    """Run Superfris discovery + STRATO IMAP drafts. Never sends an email."""
+    token = request.headers.get("X-Automation-Token", "")
+    if not settings.daily_job_token or not compare_digest(token, settings.daily_job_token):
+        raise HTTPException(401, "Unauthorized")
+    return run_superfris_pass(db)
+
+
+@app.get("/api/superfris/imap-check", dependencies=[Depends(auth)])
+def superfris_imap_check():
+    """Non-sending read-only IMAP connection/folder diagnostic."""
+    return strato_mail_probe()
+
+
+@app.get("/api/superfris/status", dependencies=[Depends(auth)])
+def superfris_status(db: Session = Depends(get_db)):
+    return superfris_stats(db)
 
 
 @app.post("/api/internal/daily-lead-engine")

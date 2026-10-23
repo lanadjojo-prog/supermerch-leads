@@ -6,35 +6,28 @@ STRATO-mailbox `gio@superfris.online`, zonder SuperMerch/Zoho te veranderen.
 ## Stand van zaken
 
 Dit is **voorbereide code** in een geïsoleerde branch. Er is **geen live
-mailboxverbinding** en er worden nog geen concepten geproduceerd. De
-Workspace 2-service moet eerst de bestaande SuperMerch-database en Zoho-koppeling
-veilig hebben gemigreerd; de oorspronkelijke service is geschorst.
+mailboxverbinding** en er worden nog geen concepten geproduceerd. Workspace 2 functioneert met de bestaande SuperMerch-database en Zoho-concepten. De oorspronkelijke service in de oude workspace is geschorst. Verifieer voor go-live dat Workspace 2 nog steeds gezond is.
 
 ## Veilig activeren
 
-1. Herstel/migreer eerst de bestaande Render-PostgreSQL-database en controleer
-   dat de bestaande SuperMerch-leadmachine en mailintegratie werken.
+1. Controleer bestaande Workspace 2 op een succesvolle SuperMerch-run (22 oktober: 30 Zoho-concepten volgens logs).
 2. Deploy de code op de bestaande Workspace 2-service. De nieuwe
    `superfris_leads` en `superfris_draft_attempts` tabellen worden via
    `Base.metadata.create_all` aangemaakt; bestaande tabellen blijven intact.
 3. Zet in **Render Environment** (nooit in GitHub-bestanden of chat):
-   - `SUPERFRIS_ENABLED=true` (standaard `false`)
+   - `SUPERFRIS_ENABLED=false` tijdens de eerste STRATO-probe; activeer later met `true`.
    - `SUPERFRIS_STRATO_PASSWORD=<veilig opgeslagen mailboxwachtwoord>`
    - `GOOGLE_PLACES_API_KEY` (bestaande sleutel)
    - `DAILY_JOB_TOKEN` (bestaand intern automatisatietoken)
    - optioneel `OPENAI_API_KEY` voor onderscheidende, feitelijke concepten
-4. Controleer via de Basic Auth-beveiligde route
-   `GET /api/superfris/status` of de configuratie gereed staat.
-5. Start één keer handmatig een veilige run via
-   `POST /api/internal/superfris-lead-engine` met de header
-   `X-Automation-Token: <token>` en controleer in STRATO Webmail de
-   map **Drafts**. Bij een onduidelijk IMAP-resultaat wordt een reservering
-   vastgehouden om dubbel opslaan te voorkomen.
-6. Pas daarna een identiek token als `SUPERFRIS_DAILY_JOB_TOKEN` in
-   GitHub Actions Secrets in. De workflow kan eerst handmatig worden gestart.
-   GitHub scheduled workflows draaien alleen wanneer deze workflow op de
-   standaardbranch staat; een losse feature- of migratiebranch start de
-   dagelijkse planning dus **niet vanzelf**.
+4. Zet tijdelijk `SUPERFRIS_IMAP_PROBE_ON_STARTUP=true` en herstart de service. Controleer de Render-app-logregel `Superfris IMAP startup probe` (uitsluitend status en of de conceptenmap gevonden is). De probe verstuurt noch bewaart berichten. Controleer ook de Basic Auth-routes `GET /api/superfris/status` en `GET /api/superfris/imap-check`.
+5. Nadat de IMAP-probe status `connected` en `drafts_folder_found=true` geeft,
+   activeer `SUPERFRIS_ENABLED=true`. De bestaande Workspace 2
+   `/health` wake start de gescheiden Superfris-verwerking, zonder nieuwe service
+   of GitHub Actions Secret. Begin met een gecontroleerde eerste run en controleer
+   het resultaat in STRATO Webmail.
+6. Houd `SUPERFRIS_IMAP_PROBE_ON_STARTUP` daarna uit. De mailmodule
+   maakt alleen concepten; er is geen automatische verzendfunctie.
 
 ## Gedrag
 
@@ -48,7 +41,7 @@ veilig hebben gemigreerd; de oorspronkelijke service is geschorst.
   Met AI-sleutel kan openbare websitecontext verantwoord worden verwerkt;
   zonder sleutel volgt een terughoudende basistekst.
 - Slaat maximaal 5 concepten per run en maximaal 30 reserveringen per
-  Amsterdamse kalenderdag op, met \\Draft in de STRATO-map `Drafts`.
+  Amsterdamse kalenderdag op, met IMAP Draft-vlag in de daadwerkelijk gevonden conceptenmap.
 - Probeert onzekere eerdere IMAP-opslagen niet automatisch opnieuw.
 - **Verstuurt nooit e-mail**: er is geen SMTP-verzendpad.
 - Omdat e-mailadressen en koopsignalen kunnen ontbreken, is 30 per dag
@@ -62,3 +55,7 @@ ook richting bedrijven. Controleer vóór verzending of de ontvanger
 toestemming gaf of een geldige uitzondering geldt; bewaar bewijs en
 respecteer afmeldingen. Deze eerste versie heeft **nog geen** compleet
 toestemmings-/uitschrijvingsregister. Schakel dus geen bulkverzending in.
+
+## Status technische validatie
+
+GitHub Actions kon eerder niet starten (job zonder runner en stappen); de Python-testuitvoering is nog niet via CI bevestigd. Laat de eerste Render-deploy met `SUPERFRIS_ENABLED=false` uitvoeren en controleer op import/startupfouten vóór activeren.

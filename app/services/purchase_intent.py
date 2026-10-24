@@ -127,7 +127,7 @@ def detect_purchase_opportunities(
     unique = []
     seen = set()
     for candidate in found:
-        key = (candidate["trigger_type"], candidate["source_url"], candidate["event_date"])
+        key = (candidate["trigger_type"], candidate["source_url"])
         if key not in seen:
             seen.add(key)
             unique.append(candidate)

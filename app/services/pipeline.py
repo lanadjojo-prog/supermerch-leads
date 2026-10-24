@@ -9,6 +9,7 @@ from .discovery import discover_google_places, normalize_domain
 from .intelligence import analyze_company, generate_outreach
 from .scoring import score_lead
 from .triggers import detect_triggers
+from .purchase_intent import detect_purchase_opportunities
 
 
 def choose_best_email(emails: list[tuple[str, str]]) -> tuple[str | None, str | None]:
@@ -98,14 +99,16 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         excerpt = crawl.combined_text[:50000]
         lead.crawl_excerpt = excerpt
 
+        # Dated opportunities must be kept separate from generic website keywords.
+        opportunities = detect_purchase_opportunities(crawl.pages)
         triggers = detect_triggers(crawl.pages)
-        if triggers:
+        if opportunities or triggers:
             trigger_hits += 1
-            _persist_triggers(db, lead, triggers)
+            _persist_triggers(db, lead, opportunities + triggers)
 
         try:
             analysis = analyze_company(company.name, campaign.niche, excerpt)
-            analysis = _apply_trigger_context(analysis, triggers)
+            analysis = _apply_trigger_context(analysis, opportunities or triggers)
         except Exception as exc:
             lead.status = "analysis_failed"
             lead.lead_reason = f"Analysefout: {type(exc).__name__}"
@@ -113,7 +116,12 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
             continue
 
         analysed += 1
-        scored = score_lead(analysis, campaign.niche, triggers=triggers)
+        lead.email, lead.email_source_url = choose_best_email(crawl.emails)
+        contact_available = bool(lead.email and lead.email_source_url)
+        scored = score_lead(
+            analysis, campaign.niche, triggers=triggers,
+            opportunities=opportunities, contact_available=contact_available,
+        )
         lead.score = scored.score
         lead.score_reasons = "\n".join(scored.reasons)
 
@@ -124,8 +132,6 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         ):
             setattr(lead, field, analysis.get(field))
 
-        lead.email, lead.email_source_url = choose_best_email(crawl.emails)
-
         if scored.auto_eligible:
             lead.status = "ready_for_review"
             qualified += 1
@@ -133,7 +139,8 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
                 lead.outreach_text = generate_outreach(company.name, lead.contact_name, analysis)
             except Exception:
                 lead.outreach_text = None
-        elif lead.score >= 40:
+        elif lead.score >= 10:
+            # Keep researchable leads without allowing generic fit into drafts.
             lead.status = "possible"
         else:
             lead.status = "rejected"

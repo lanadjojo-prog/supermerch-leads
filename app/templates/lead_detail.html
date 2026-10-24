@@ -28,8 +28,15 @@
 {% endif %}
 {% if lead.score_reasons %}<pre class="reasons">{{ lead.score_reasons }}</pre>{% endif %}</section>
 <section class="panel"><h2>Contact</h2><dl><dt>Naam</dt><dd>{{ lead.contact_name or 'Nog niet gevonden' }}</dd><dt>Rol</dt><dd>{{ lead.contact_role or '—' }}</dd><dt>E-mail</dt><dd>{{ lead.email or 'Nog niet gevonden' }}</dd></dl>
-<div class="actions"><form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="approved"><button class="button">✓ Goedkeuren</button></form>
-<form method="post" action="/leads/{{ lead.id }}/status"><input type="hidden" name="status_value" value="rejected"><button class="button ghost">Afwijzen</button></form></div></section>
+<p class="hint">Status: <strong>{{ lead.status }}</strong>. Een openbare e-mailadresvermelding is geen toestemming om marketing te sturen.</p>
+<div class="actions">
+  {% for value, label in [('approved','Beoordeeld'), ('contacted','Benaderd'), ('responded','Reactie'), ('quoted','Offerte'), ('won','Order gewonnen'), ('lost','Verloren'), ('rejected','Afwijzen')] %}
+  <form method="post" action="/leads/{{ lead.id }}/status">
+    <input type="hidden" name="status_value" value="{{ value }}">
+    <button class="button small {{ 'ghost' if value not in ('won',) else '' }}" type="submit">{{ label }}</button>
+  </form>
+  {% endfor %}
+</div></section>
 </div>
 <section class="panel">
   <div class="panel-head"><h2>Concept outreach</h2>

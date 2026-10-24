@@ -37,6 +37,17 @@ def _persist_triggers(db: Session, lead: Lead, triggers: list[dict]) -> None:
     db.commit()
 
 
+def _offer_for_opportunity(niche: str, opportunity: dict) -> str:
+    """Practical product angle, without guessed prices, stock or production times."""
+    if niche in {"Sport & fitness", "Studio's & dans", "Sportclubs"}:
+        return "Custom sportsokken, gripsokken of sportshirts in eigen clubstijl"
+    if niche in {"Sport fanclubs & supporters", "Carnaval & optochten"}:
+        return "Gebreide supporterssjaals, hoodies of shirts met eigen ontwerp"
+    if niche in {"Events", "Lustrums & jubileumcommissies"}:
+        return "Eventshirts, hoodies en merchandise voor deelnemers of vrijwilligers"
+    return opportunity.get("recommended_offer") or "Custom merchandise passend bij de organisatie"
+
+
 def _apply_trigger_context(analysis: dict, triggers: list[dict]) -> dict:
     if not triggers:
         return analysis
@@ -48,6 +59,7 @@ def _apply_trigger_context(analysis: dict, triggers: list[dict]) -> dict:
     analysis["trigger_strength"] = strongest.get("strength")
     analysis["trigger_evidence"] = strongest.get("evidence")
     analysis["trigger_source_url"] = strongest.get("source_url")
+    analysis["trigger_event_date"] = strongest.get("event_date")
 
     # Een concrete trigger is beter voor outreach dan een generieke campagnereden.
     if strongest.get("reason"):
@@ -109,6 +121,8 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         try:
             analysis = analyze_company(company.name, campaign.niche, excerpt)
             analysis = _apply_trigger_context(analysis, opportunities or triggers)
+            if opportunities:
+                analysis["recommended_offer"] = _offer_for_opportunity(campaign.niche, opportunities[0])
         except Exception as exc:
             lead.status = "analysis_failed"
             lead.lead_reason = f"Analysefout: {type(exc).__name__}"

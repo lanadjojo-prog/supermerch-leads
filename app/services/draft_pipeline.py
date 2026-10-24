@@ -125,7 +125,7 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             Lead.email.is_not(None),
             Lead.email_source_url.is_not(None),
             Lead.outreach_text.is_not(None),
-            Lead.score >= 60,
+            Lead.score >= 75,
         )
         .order_by(Lead.score.desc(), Lead.created_at.asc())
     ).all()
@@ -134,6 +134,13 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
         if result["drafts_created"] + result["attempts_failed"] >= quota:
             break
         if not _official_email_source(lead):
+            continue
+        # A legacy score or generic keyword can never open the drafting gate.
+        if not any(
+            trigger.trigger_type in {"intent_active_request", "intent_upcoming_event"}
+            and trigger.source_url and trigger.evidence
+            for trigger in lead.triggers
+        ):
             continue
         # An address can occur on multiple websites. Do not prepare mail for
         # any address already known from another old or new lead.

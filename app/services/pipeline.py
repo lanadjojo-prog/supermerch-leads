@@ -9,6 +9,7 @@ from .discovery import discover_google_places, normalize_domain
 from .intelligence import analyze_company, generate_outreach
 from .scoring import score_lead
 from .triggers import detect_triggers
+from .purchase_intent import detect_purchase_opportunities
 
 
 def choose_best_email(emails: list[tuple[str, str]]) -> tuple[str | None, str | None]:
@@ -36,6 +37,17 @@ def _persist_triggers(db: Session, lead: Lead, triggers: list[dict]) -> None:
     db.commit()
 
 
+def _offer_for_opportunity(niche: str, opportunity: dict) -> str:
+    """Practical product angle, without guessed prices, stock or production times."""
+    if niche in {"Sport & fitness", "Studio's & dans", "Sportclubs"}:
+        return "Custom sportsokken, gripsokken of sportshirts in eigen clubstijl"
+    if niche in {"Sport fanclubs & supporters", "Carnaval & optochten"}:
+        return "Gebreide supporterssjaals, hoodies of shirts met eigen ontwerp"
+    if niche in {"Events", "Lustrums & jubileumcommissies"}:
+        return "Eventshirts, hoodies en merchandise voor deelnemers of vrijwilligers"
+    return opportunity.get("recommended_offer") or "Custom merchandise passend bij de organisatie"
+
+
 def _apply_trigger_context(analysis: dict, triggers: list[dict]) -> dict:
     if not triggers:
         return analysis
@@ -47,6 +59,7 @@ def _apply_trigger_context(analysis: dict, triggers: list[dict]) -> dict:
     analysis["trigger_strength"] = strongest.get("strength")
     analysis["trigger_evidence"] = strongest.get("evidence")
     analysis["trigger_source_url"] = strongest.get("source_url")
+    analysis["trigger_event_date"] = strongest.get("event_date")
 
     # Een concrete trigger is beter voor outreach dan een generieke campagnereden.
     if strongest.get("reason"):
@@ -98,14 +111,18 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         excerpt = crawl.combined_text[:50000]
         lead.crawl_excerpt = excerpt
 
+        # Dated opportunities must be kept separate from generic website keywords.
+        opportunities = detect_purchase_opportunities(crawl.pages)
         triggers = detect_triggers(crawl.pages)
-        if triggers:
+        if opportunities or triggers:
             trigger_hits += 1
-            _persist_triggers(db, lead, triggers)
+            _persist_triggers(db, lead, opportunities + triggers)
 
         try:
             analysis = analyze_company(company.name, campaign.niche, excerpt)
-            analysis = _apply_trigger_context(analysis, triggers)
+            analysis = _apply_trigger_context(analysis, opportunities or triggers)
+            if opportunities:
+                analysis["recommended_offer"] = _offer_for_opportunity(campaign.niche, opportunities[0])
         except Exception as exc:
             lead.status = "analysis_failed"
             lead.lead_reason = f"Analysefout: {type(exc).__name__}"
@@ -113,7 +130,12 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
             continue
 
         analysed += 1
-        scored = score_lead(analysis, campaign.niche, triggers=triggers)
+        lead.email, lead.email_source_url = choose_best_email(crawl.emails)
+        contact_available = bool(lead.email and lead.email_source_url)
+        scored = score_lead(
+            analysis, campaign.niche, triggers=triggers,
+            opportunities=opportunities, contact_available=contact_available,
+        )
         lead.score = scored.score
         lead.score_reasons = "\n".join(scored.reasons)
 
@@ -124,8 +146,6 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         ):
             setattr(lead, field, analysis.get(field))
 
-        lead.email, lead.email_source_url = choose_best_email(crawl.emails)
-
         if scored.auto_eligible:
             lead.status = "ready_for_review"
             qualified += 1
@@ -133,7 +153,8 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
                 lead.outreach_text = generate_outreach(company.name, lead.contact_name, analysis)
             except Exception:
                 lead.outreach_text = None
-        elif lead.score >= 40:
+        elif lead.score >= 10:
+            # Keep researchable leads without allowing generic fit into drafts.
             lead.status = "possible"
         else:
             lead.status = "rejected"

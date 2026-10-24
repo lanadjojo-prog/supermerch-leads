@@ -499,7 +499,7 @@ def lead_detail(request: Request, lead_id: int, db: Session = Depends(get_db)):
 
 @app.post("/leads/{lead_id}/status", dependencies=[Depends(auth)])
 def set_lead_status(lead_id: int, status_value: str = Form(...), db: Session = Depends(get_db)):
-    allowed = {"approved", "rejected", "contacted", "ready_for_review", "possible"}
+    allowed = {"approved", "rejected", "contacted", "ready_for_review", "possible", "responded", "quoted", "won", "lost"}
     if status_value not in allowed: raise HTTPException(400, "Ongeldige status")
     lead = db.get(Lead, lead_id)
     if not lead: raise HTTPException(404)

@@ -57,9 +57,12 @@ LEAD_CATEGORIES: tuple[LeadCategory, ...] = (
 
 
 FOCUS_CATEGORY_NAMES: tuple[str, ...] = (
+    # More useful immediate event and club buying moments for the pilot.
+    "Sport & fitness",
+    "Studio's & dans",
+    "Sportclubs",
+    "Events",
     "Carnaval & optochten",
-    "Sport fanclubs & supporters",
-    "Lustrums & jubileumcommissies",
 )
 
 
@@ -123,9 +126,8 @@ def iter_daily_searches(day: date):
         remaining = remaining[other_offset:] + remaining[:other_offset]
 
     focus = [by_name[name] for name in FOCUS_CATEGORY_NAMES if name in by_name]
-    # De drie actuele SuperMerch-focussegmenten krijgen extra zoekgewicht.
-    # Daardoor bestaat grofweg de helft van de eerste zoekrotatie uit carnaval,
-    # supporters/fanclubs en lustrum/jubileum, zonder de overige markt stil te zetten.
+    # Pilot: fitness, studios, clubs, events and carnaval receive extra coverage.
+    # This changes discovery order only; a verified opportunity is still required.
     weighted_focus = focus * 4
     categories = tuple(weighted_focus + priority + remaining)
     region_offset = (seed * 7) % len(regions)

@@ -1,9 +1,12 @@
-name: Superfris draft pipeline checks
+name: Lead engine regression checks
 
 on:
   pull_request:
     paths:
       - "app/superfris_leads.py"
+      - "app/services/**"
+      - "app/lead_categories.py"
+      - "tests/test_purchase_intent.py"
       - "app/main.py"
       - "tests/test_superfris_leads.py"
       - ".github/workflows/superfris-checks.yml"
@@ -19,4 +22,4 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt
       - run: python -m compileall -q app
-      - run: python -m unittest discover -s tests -p "test_superfris_leads.py" -v
+      - run: python -m unittest discover -s tests -p "test_*.py" -v

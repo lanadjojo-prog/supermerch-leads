@@ -182,13 +182,22 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
     trigger_label = str(analysis.get("trigger_label") or "").strip()
     trigger_evidence = str(analysis.get("trigger_evidence") or "").strip()
     trigger_source_url = str(analysis.get("trigger_source_url") or "").strip()
+    trigger_type = str(analysis.get("trigger_type") or "").strip()
+    trigger_date = str(analysis.get("trigger_event_date") or "").strip()
+    if trigger_type == "intent_active_request":
+        specific_intro = f"Ik zag jullie openbare aanvraag rond merchandise van {trigger_date}."
+    elif trigger_type == "intent_upcoming_event":
+        specific_intro = f"Ik zag jullie aangekondigde evenement voor {trigger_date}."
+    else:
+        specific_intro = f"Ik kwam {company_name} tegen via jullie website."
 
     if not settings.openai_api_key:
         if variant == "A":
             return (
                 "Hi!\n\n"
                 "Ik ben Chris van SuperMerch.\n\n"
-                f"Ik kwam {company_name} tegen en zag op jullie website een concrete aanleiding om even contact op te nemen.\n\n"
+                f"{specific_intro}\n\n"
+                f"Ik dacht aan: {offer or 'merchandise in jullie eigen huisstijl'}.\n\n"
                 "Wij helpen organisaties met het volledig uit handen nemen van merchandise: "
                 "van productkeuze en design tot productie en levering. Eén aanspreekpunt, zodat je "
                 "niet zelf met verschillende leveranciers en ontwerpen hoeft te schakelen.\n\n"
@@ -272,6 +281,8 @@ Bronpagina trigger: {trigger_source_url or 'onbekend'}
 Extra regels:
 - Als er concreet triggerbewijs is, gebruik dat als natuurlijke aanleiding.
 - Noem geen bron-URL in de mail zelf.
+- Een aankomend event is GEEN bewijs dat de organisatie al merchandise wil bestellen. Claim dat nooit.
+- Gebruik een concreet passend product, zonder verzonnen aantallen, prijzen of levertijden.
 - Een vacature/groei-signaal alleen is te zwak voor stellige personalisatie; formuleer dan terughoudend.
 """
     response = client.responses.create(model=settings.openai_model, input=prompt, store=False)

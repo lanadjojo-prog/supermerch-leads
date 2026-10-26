@@ -6,6 +6,7 @@ existing SuperMerch lead tables, Zoho sender, and send quota unchanged.
 from __future__ import annotations
 
 import imaplib
+import html
 import logging
 import os
 import re
@@ -13,7 +14,7 @@ import threading
 import time
 from datetime import datetime, time as day_time, timedelta, timezone
 from email.message import EmailMessage
-from email.utils import formatdate
+from email.utils import formatdate, make_msgid
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -141,6 +142,82 @@ def _compose_message(company: str, region: str, category: str, offer: str, websi
     )
 
 
+SUPERMERCH_LOGO_URL = "https://superfris.online/wp-content/uploads/2026/10/superfris-v7-00.png"
+SIGNATURE_NAME = "Giovanni Djojowardi"
+SIGNATURE_PHONE = "+31 (0)6 14 99 01 12"
+
+
+def _body_without_old_signature(content: str) -> str:
+    """Remove only the exact legacy automatically-generated text sign-off."""
+    value = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+    return re.sub(r"\n{1,3}Groet,\s*\nGiovanni\s*\nSuperfris\s*$", "", value, flags=re.I).strip()
+
+
+def _html_body(content: str) -> str:
+    """Safe basic email HTML, escaping all user/company/site-derived content."""
+    clean = _body_without_old_signature(content)
+    paragraphs = re.split(r"\n\s*\n", clean)
+    html_paragraphs = []
+    for block in paragraphs:
+        lines = [html.escape(s.strip()) for s in block.split("\n")]
+        if any(lines):
+            html_paragraphs.append(
+                '<p style="margin:0 0 17px;font-family:Arial,Helvetica,sans-serif;'
+                'font-size:15px;line-height:1.65;color:#171717;">'
+                + "<br>".join(lines) + "</p>"
+            )
+    return "\n".join(html_paragraphs)
+
+
+def _signature_html() -> str:
+    """Use a PUBLIC WordPress media URL rather than a private webmail snippet URL."""
+    return (
+        '<div style="margin-top:26px;padding-top:18px;border-top:1px solid #e7e7e7;'
+        'max-width:440px;font-family:Arial,Helvetica,sans-serif;color:#171717;'
+        'font-size:13px;line-height:1.6;">'
+        '<p style="margin:0 0 14px;color:#171717;">Met vriendelijke groet,</p>'
+        '<img src="' + SUPERMERCH_LOGO_URL + '" alt="Superfris" width="188" '
+        'style="display:block;width:188px;max-width:100%;height:auto;border:0;'
+        'margin:0 0 12px;" />'
+        '<div style="font-size:14px;"><strong>Giovanni</strong> Djojowardi</div>'
+        '<div style="height:3px;width:48px;background:#bcf34b;margin:10px 0;"></div>'
+        '<div><a href="mailto:Gio@superfris.online" '
+        'style="color:#171717;text-decoration:none;">Gio@superfris.online</a></div>'
+        '<div><a href="tel:+31614990112" '
+        'style="color:#171717;text-decoration:none;">+31 (0)6 14 99 01 12</a></div>'
+        '<div><a href="https://www.superfris.online" '
+        'style="color:#171717;text-decoration:none;">www.superfris.online</a></div>'
+        '<div style="border-top:1px solid #e7e7e7;margin-top:13px;"></div>'
+        '</div>'
+    )
+
+
+def _format_draft(to_address: str, subject: str, content: str,
+                  *, lead_id: int | None = None) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"] = MAILBOX
+    msg["To"] = to_address
+    msg["Subject"] = subject
+    msg["Date"] = formatdate(localtime=False)
+    msg["Message-ID"] = make_msgid(domain="superfris.online")
+    if lead_id is not None:
+        msg["X-Superfris-Lead-ID"] = str(int(lead_id))
+    plain = _body_without_old_signature(content)
+    plain += (
+        "\n\nMet vriendelijke groet,\n\nGiovanni Djojowardi\n"
+        "Gio@superfris.online\n+31 (0)6 14 99 01 12\n"
+        "www.superfris.online"
+    )
+    msg.set_content(plain)
+    body_html = (
+        '<div style="max-width:640px;background:#ffffff;padding:8px 0;'
+        'font-family:Arial,Helvetica,sans-serif;">'
+        + _html_body(content) + _signature_html() + "</div>"
+    )
+    msg.add_alternative(body_html, subtype="html")
+    return msg
+
+
 def strato_mail_probe() -> dict:
     """Read-only STRATO login/folder probe. Never fetches or sends messages."""
     password = os.getenv("SUPERFRIS_STRATO_PASSWORD", "")
@@ -183,17 +260,12 @@ def _identify_draft_folder(folders: list[bytes]) -> str | None:
     return None
 
 
-def _save_strato_draft(to_address: str, subject: str, content: str) -> None:
+def _save_strato_draft(to_address: str, subject: str, content: str, *, lead_id: int | None = None) -> None:
     """APPEND to the mailbox's actual Drafts folder; never calls SMTP."""
     password = os.getenv("SUPERFRIS_STRATO_PASSWORD", "")
     if not password:
         raise RuntimeError("SUPERFRIS_STRATO_PASSWORD not configured")
-    msg = EmailMessage()
-    msg["From"] = MAILBOX
-    msg["To"] = to_address
-    msg["Subject"] = subject
-    msg["Date"] = formatdate(localtime=False)
-    msg.set_content(content)
+    msg = _format_draft(to_address, subject, content, lead_id=lead_id)
     server = imaplib.IMAP4_SSL("imap.strato.de", 993, timeout=25)
     try:
         server.login(MAILBOX, password)
@@ -279,7 +351,7 @@ def _make_drafts(db: Session) -> int:
             continue
         attempted_this_pass += 1
         try:
-            _save_strato_draft(lead.email, lead.subject, lead.message)
+            _save_strato_draft(lead.email, lead.subject, lead.message, lead_id=lead.id)
         except Exception as exc:
             db.rollback()
             attempt = db.get(SuperfrisDraftAttempt, attempt.id)

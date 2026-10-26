@@ -38,7 +38,8 @@ CITIES = {
     "zwolle": (52.516, 6.084), "maastricht": (50.851, 5.690),
     "haarlem": (52.388, 4.647), "dordrecht": (51.813, 4.690),
 }
-ENDPOINT = "https://overpass-api.de/api/interpreter"
+ENDPOINTS = ("https://overpass.private.coffee/api/interpreter",
+             "https://overpass-api.de/api/interpreter")
 BLOCKED_HOSTS = {
     "facebook.com", "instagram.com", "linkedin.com", "x.com", "twitter.com",
     "tiktok.com", "google.com", "linktr.ee", "webwinkelkeur.nl",
@@ -152,29 +153,39 @@ def discover_open_data(query: str, region: str, limit: int = 12, *,
         if wait:
             time.sleep(wait)
         _LAST_REQUEST = time.monotonic()
-        try:
-            with httpx.Client(timeout=25) as client:
-                resp = client.post(
-                    ENDPOINT,
-                    data={"data": _query(*coords, segment)},
-                    headers={"User-Agent": "SuperMerch-Superfris-Leads/1.1 (https://supermerch.nl; limited OSM attribution)"},
-                )
-            if resp.status_code in (429, 406, 503, 504):
-                _BLOCKED_UNTIL = time.monotonic() + 180
-                logger.warning("OSM search busy: HTTP %s; cooldown 180s", resp.status_code)
+        elements = None
+        for endpoint in ENDPOINTS:
+            try:
+                with httpx.Client(timeout=25) as client:
+                    resp = client.post(
+                        endpoint, data={"data": _query(*coords, segment)},
+                        headers={"User-Agent": "SuperMerch-Superfris-Leads/1.1 (+https://supermerch.nl; ODbL attribution)"},
+                    )
+                # Never evade a public host's rate limits with another host.
+                if resp.status_code in (429, 406, 503, 504):
+                    _BLOCKED_UNTIL = time.monotonic() + 180
+                    logger.warning("OSM server busy: HTTP %s; cooldown 180s", resp.status_code)
+                    return []
+                resp.raise_for_status()
+                elements = resp.json().get("elements", [])
+                if not isinstance(elements, list):
+                    elements = []
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError) as exc:
+                logger.warning("OSM endpoint unreachable (category=%s); alternate endpoint next",
+                               type(exc).__name__)
+                continue
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                _BLOCKED_UNTIL = time.monotonic() + 90
+                logger.warning("OSM search unavailable (category=%s)", type(exc).__name__)
                 return []
-            resp.raise_for_status()
-            elements = resp.json().get("elements", [])
-            if not isinstance(elements, list):
-                elements = []
-            _CACHE[cache_key] = (time.monotonic(), elements)
-            # Do not keep growing process memory on long-running services.
-            if len(_CACHE) > 100:
-                _CACHE.clear()
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
+        if elements is None:
             _BLOCKED_UNTIL = time.monotonic() + 90
-            logger.warning("OSM search unavailable (category=%s)", type(exc).__name__)
+            logger.warning("OSM all endpoints unreachable; no companies invented")
             return []
+        _CACHE[cache_key] = (time.monotonic(), elements)
+        if len(_CACHE) > 100:
+            _CACHE.clear()
     return _parse_elements(elements, max(1, min(20, limit)))
 
 def discover_businesses(query: str, region: str, limit: int = 12, *,

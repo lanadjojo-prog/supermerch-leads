@@ -1,7 +1,7 @@
 {
-  "command_id": "superfris-html-drafts-replace-20261026-v1",
+  "command_id": "superfris-html-drafts-verify-20261026-v3",
   "action": "reformat_superfris_drafts",
   "payload": {
-    "execute": true
+    "execute": false
   }
 }

@@ -78,6 +78,7 @@ def process_startup_command() -> None:
             execute = bool(payload.get("execute", False))
             result = migrate_existing_superfris_drafts(execute=execute)
             row.result = json.dumps(result, ensure_ascii=False)
+            logger.warning("Superfris HTML migration verified summary: %s", result)
             if result.get("status") in {"imap_error", "backup_folder_unavailable",
                                       "draft_folder_missing", "draft_folder_select_failed",
                                       "server_cannot_safely_replace_drafts"}:

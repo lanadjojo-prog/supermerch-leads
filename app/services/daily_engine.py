@@ -191,7 +191,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     total_today = sent_today(db)
     drafts_reserved_today = _today_draft_count(db, draft_start, draft_end)
     result = {
-        "ok": True,
+        "ok": discovery_error is None,
         "date": day_iso,
         "sent_today": total_today,
         "daily_target": settings.daily_send_target,
@@ -208,12 +208,12 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         "zoho_draft_attempts_failed": draft_failures,
         "discovery_error": discovery_error,
         "status": (
-            "discovery_blocked" if discovery_error else
+            "discovery_blocked"
+            if discovery_error else
             ("draft_daily_target_reached" if drafts_reserved_today >= 30 else "drafts_only")
             if not settings.automated_outreach_enabled else
-            "daily_target_reached"
-            if total_today >= settings.daily_send_target
-            else "continue_next_scheduled_run"
+            ("daily_target_reached" if total_today >= settings.daily_send_target
+             else "continue_next_scheduled_run")
         ),
     }
     logger.warning("Lead Engine run afgerond: %s", result)

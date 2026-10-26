@@ -9,6 +9,7 @@ from openai import OpenAI, APIError
 
 from ..config import settings
 from .discovery import DiscoveredCompany, normalize_domain
+from .site_verification import verify_live_business_url
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def public_url(value):
         return ""
 
 
-def parse_companies(data, limit):
+def parse_companies(data, limit, *, allow_source_free=False):
     """Require a completed search and a returned source URL, not invented URLs."""
     if data.get("status") != "completed":
         raise DiscoveryError("openai_discovery_incomplete")
@@ -96,10 +97,16 @@ def parse_companies(data, limit):
         name = entry.get("name")
         domain = normalize_domain(claimed_url)
         verified_urls = urls_by_domain.get(domain) or []
-        if not claimed_url or not verified_urls or domain in seen or not isinstance(name, str) or not name.strip():
+        if not claimed_url or domain in seen or not isinstance(name, str) or not name.strip():
             continue
-        # Prefer exact matching URL; otherwise use the real consulted URL.
-        verified_url = claimed_url if claimed_url in verified_urls else verified_urls[0]
+        if verified_urls:
+            # Prefer exact matching URL; otherwise use the real consulted URL.
+            verified_url = claimed_url if claimed_url in verified_urls else verified_urls[0]
+        elif allow_source_free and not sources:
+            # Caller MUST independently fetch and verify this candidate before use.
+            verified_url = claimed_url
+        else:
+            continue
         seen.add(domain)
         companies.append(DiscoveredCompany(name=name.strip()[:220], website=verified_url,
                                            source="openai_web_search"))
@@ -170,7 +177,29 @@ def discover_openai(query, region, limit=25, *, purpose="merch"):
                          "invalid_value", "unsupported_country_region_territory"}
         reason = code if code in allowed_codes else "unspecified"
         raise DiscoveryError(f"openai_discovery_api_error_{status or type(exc).__name__}_{reason}") from None
-    companies = parse_companies(response.model_dump(), limit)
+    data = response.model_dump()
+    try:
+        companies = parse_companies(data, limit)
+    except DiscoveryError as exc:
+        if str(exc) != "openai_discovery_no_verified_sources":
+            raise
+        # Some valid web searches omit all action.sources and URL annotations
+        # even with include=web_search_call.action.sources. Treat all URLs as
+        # untrusted until we independently fetch the public official domain.
+        candidates = parse_companies(data, limit, allow_source_free=True)
+        verified = []
+        for candidate in candidates:
+            url = verify_live_business_url(candidate.website)
+            if not url:
+                continue
+            candidate.website = url
+            candidate.source = "openai_live_site_verified"
+            verified.append(candidate)
+        companies = verified
+        logger.warning("OpenAI source-free website probe: candidates=%d confirmed=%d",
+                       len(candidates), len(verified))
+        if candidates and not verified:
+            raise DiscoveryError("openai_discovery_sites_unreachable")
     logger.warning("OpenAI web discovery completed: results=%s purpose=%s query=%s region=%s",
                    len(companies), purpose, query, region)
     return companies

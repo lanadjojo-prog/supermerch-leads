@@ -30,7 +30,7 @@ class FreeDiscoveryTests(unittest.TestCase):
         self.assertEqual([(x.name, x.source) for x in found],
                          [("Fietsclub", "openstreetmap")])
         self.assertEqual(client.post.call_count, 1)
-        self.assertIn("around:4500", client.post.call_args.kwargs["data"]["data"])
+        self.assertIn("around:3000", client.post.call_args.kwargs["data"]["data"])
         self.assertIn("out tags center 120", client.post.call_args.kwargs["data"]["data"])
 
     def test_unknown_city_returns_empty_without_external_requests(self):

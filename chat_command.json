@@ -1,5 +1,5 @@
 {
-  "command_id": "openai-draft-recovery-20261026-v6",
+  "command_id": "openai-draft-recovery-20261026-v7",
   "action": "run_daily_drafts",
   "payload": {}
 }

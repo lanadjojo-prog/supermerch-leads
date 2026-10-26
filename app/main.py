@@ -28,7 +28,7 @@ from .services.automation_scheduler import run_automation_pass, run_automation_s
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds
 from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest  # registers isolated tables
-from .services.openai_discovery import discover_openai
+from .services.open_data_discovery import discover_businesses
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -275,7 +275,7 @@ async def internal_discovery_places(request: Request):
         raise HTTPException(400, "query and region are required")
 
     try:
-        companies = discover_openai(query, region, limit=limit)
+        companies = discover_businesses(query, region, limit=limit)
     except Exception as exc:
         logger.exception("Discovery bridge failed for %s / %s", query, region)
         raise HTTPException(502, str(exc))

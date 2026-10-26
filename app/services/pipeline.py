@@ -1,4 +1,7 @@
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -83,6 +86,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         raise
 
     created = analysed = qualified = trigger_hits = 0
+    crawl_failed = analysis_failed = official_contacts = dated_opportunities = 0
 
     for company in companies:
         domain = normalize_domain(company.website)
@@ -105,6 +109,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
 
         crawl = crawl_website(company.website)
         if not crawl.pages:
+            crawl_failed += 1
             lead.status = "crawl_failed"
             db.commit()
             continue
@@ -114,6 +119,8 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
 
         # Dated opportunities must be kept separate from generic website keywords.
         opportunities = detect_purchase_opportunities(crawl.pages)
+        if opportunities:
+            dated_opportunities += 1
         triggers = detect_triggers(crawl.pages)
         if opportunities or triggers:
             trigger_hits += 1
@@ -125,6 +132,9 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
             if opportunities:
                 analysis["recommended_offer"] = _offer_for_opportunity(campaign.niche, opportunities[0])
         except Exception as exc:
+            analysis_failed += 1
+            logger.warning("Prospect analysis failed (category=%s; model=%s)",
+                           type(exc).__name__, __import__("app.config", fromlist=["settings"]).settings.openai_model)
             lead.status = "analysis_failed"
             lead.lead_reason = f"Analysefout: {type(exc).__name__}"
             db.commit()
@@ -133,6 +143,8 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         analysed += 1
         lead.email, lead.email_source_url = choose_best_email(crawl.emails)
         contact_available = bool(lead.email and lead.email_source_url)
+        if contact_available:
+            official_contacts += 1
         scored = score_lead(
             analysis, campaign.niche, triggers=triggers,
             opportunities=opportunities, contact_available=contact_available,
@@ -163,9 +175,19 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
 
     campaign.status = "complete"
     db.commit()
+    logger.warning(
+        "Campaign verified pipeline: query=%s region=%s created=%d crawled=%d "
+        "analysis_failed=%d crawl_failed=%d official_contacts=%d dated_intent=%d qualified=%d",
+        campaign.search_query, campaign.region, created, analysed, analysis_failed,
+        crawl_failed, official_contacts, dated_opportunities, qualified
+    )
     return {
         "created": created,
         "analysed": analysed,
         "qualified": qualified,
         "trigger_hits": trigger_hits,
+        "analysis_failed": analysis_failed,
+        "crawl_failed": crawl_failed,
+        "official_contacts": official_contacts,
+        "dated_opportunities": dated_opportunities,
     }

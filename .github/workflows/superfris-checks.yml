@@ -1,6 +1,9 @@
 name: Lead engine regression checks
 
 on:
+  push:
+    branches:
+      - "migration/workspace-2-20261015"
   pull_request:
     paths:
       - "app/superfris_leads.py"
@@ -9,6 +12,7 @@ on:
       - "tests/test_purchase_intent.py"
       - "app/main.py"
       - "tests/test_superfris_leads.py"
+      - "tests/test_open_data_discovery.py"
       - ".github/workflows/superfris-checks.yml"
   workflow_dispatch:
 

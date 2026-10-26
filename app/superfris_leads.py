@@ -401,7 +401,14 @@ def run_superfris_pass(db: Session) -> dict:
 
 
 def superfris_stats(db: Session) -> dict:
+    start, end, _ = _today_bounds()
+    saved_today = int(db.scalar(select(func.count(SuperfrisDraftAttempt.id)).where(
+        SuperfrisDraftAttempt.status == "saved",
+        SuperfrisDraftAttempt.created_at >= start,
+        SuperfrisDraftAttempt.created_at < end,
+    )) or 0)
     return {
+        "saved_today": saved_today,
         "configured": os.getenv("SUPERFRIS_ENABLED", "false").lower() in ("1", "true", "yes", "on"),
         "mail_password_configured": bool(os.getenv("SUPERFRIS_STRATO_PASSWORD")),
         "pending_drafts": int(db.scalar(select(func.count(SuperfrisLead.id)).where(

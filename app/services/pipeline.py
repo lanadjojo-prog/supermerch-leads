@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..models import Campaign, Lead, LeadTrigger
 from .crawler import crawl_website
 from .discovery import normalize_domain
@@ -134,7 +135,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         except Exception as exc:
             analysis_failed += 1
             logger.warning("Prospect analysis failed (category=%s; model=%s)",
-                           type(exc).__name__, __import__("app.config", fromlist=["settings"]).settings.openai_model)
+                           type(exc).__name__, settings.openai_model)
             lead.status = "analysis_failed"
             lead.lead_reason = f"Analysefout: {type(exc).__name__}"
             db.commit()

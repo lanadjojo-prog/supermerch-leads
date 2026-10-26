@@ -362,12 +362,28 @@ def run_superfris_pass(db: Session) -> dict:
             db.rollback()
             return {"status": "slot_already_claimed", "sent": 0}
         try:
-            created = _discover(db, day, local_now.hour)
+            discovery_error = None
+            try:
+                created = _discover(db, day, local_now.hour)
+            except Exception as discovery_exc:
+                # Keep converting an existing verified prospect backlog into
+                # drafts even when the external company-discovery API is down.
+                db.rollback()
+                created = 0
+                discovery_error = (
+                    "google_places_permission_denied"
+                    if "HTTP 403" in str(discovery_exc)
+                    else type(discovery_exc).__name__
+                )
+                logger.exception("Superfris company discovery unavailable: %s", discovery_error)
             drafted = _make_drafts(db)
-            record.status = "complete"
+            record = db.scalar(select(ChatCommand).where(ChatCommand.command_id == slot_key))
+            record.status = "error" if discovery_error else "complete"
+            record.result = discovery_error
             db.commit()
             return {
-                "status": "complete", "date": day,
+                "status": "discovery_blocked" if discovery_error else "complete",
+                "discovery_error": discovery_error, "date": day,
                 "new_prospects": created, "drafts_created": drafted,
                 "draft_attempts_today": _draft_attempts_today(db),
                 "strato_credentials_configured": bool(os.getenv("SUPERFRIS_STRATO_PASSWORD")),

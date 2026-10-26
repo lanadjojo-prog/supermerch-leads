@@ -10,7 +10,7 @@ from ..config import settings
 from ..models import Campaign, Lead, LeadTrigger
 from .crawler import crawl_website
 from .discovery import normalize_domain
-from .openai_discovery import discover_openai
+from .open_data_discovery import discover_businesses
 from .intelligence import analyze_company, generate_outreach
 from .scoring import score_lead
 from .triggers import detect_triggers
@@ -80,7 +80,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
     db.commit()
 
     try:
-        companies = discover_openai(campaign.search_query, campaign.region, campaign.target_count)
+        companies = discover_businesses(campaign.search_query, campaign.region, campaign.target_count, niche=campaign.niche)
     except Exception:
         campaign.status = "error"
         db.commit()
@@ -167,8 +167,12 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
                 lead.outreach_text = generate_outreach(company.name, lead.contact_name, analysis)
             except Exception:
                 lead.outreach_text = None
+        elif lead.score >= 25 and contact_available:
+            # Fit-only B2B prospects are reviewed as honest draft suggestions;
+            # no dated buying signal is claimed and NO email is sent.
+            lead.status = "possible"
+            lead.outreach_text = generate_outreach(company.name, lead.contact_name, analysis)
         elif lead.score >= 10:
-            # Keep researchable leads without allowing generic fit into drafts.
             lead.status = "possible"
         else:
             lead.status = "rejected"
@@ -273,6 +277,8 @@ def recover_failed_auto_analysis(db: Session, day_iso: str, *, limit: int = 12) 
                 counts["qualified"] += 1
         else:
             lead.status = "possible" if lead.score >= 10 else "rejected"
+            if lead.score >= 25 and contact_available:
+                lead.outreach_text = generate_outreach(lead.company_name, lead.contact_name, analysis)
         db.commit()
         counts["recovered"] += 1
     logger.warning("Retry AI-failed leads summary: %s", counts)

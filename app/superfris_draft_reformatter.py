@@ -10,6 +10,7 @@ from __future__ import annotations
 import imaplib
 import logging
 import os
+import time
 from email import policy
 from email.header import decode_header, make_header
 from email.parser import BytesParser
@@ -173,7 +174,7 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
                 if str(lead.id) not in already_html_ids:
                     fresh = _format_draft(lead.email, lead.subject, lead.message, lead_id=lead.id)
                     kind, _ = server.append(mailbox_name, r"(\Draft)",
-                                             imaplib.Time2Internaldate(None),
+                                             imaplib.Time2Internaldate(time.time()),
                                              fresh.as_bytes())
                     if kind != "OK":
                         raise RuntimeError("IMAP_APPEND_HTML_FAILED")

@@ -1,5 +1,5 @@
 {
-  "command_id": "openai-failed-analysis-recovery-20261026-v8",
+  "command_id": "free-mode-failed-analysis-recovery-20261026-v9",
   "action": "retry_today_failed_analysis",
   "payload": {}
 }

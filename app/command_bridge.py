@@ -71,6 +71,24 @@ def process_startup_command() -> None:
                     str(result.get("discovery_error") or "discovery_unavailable")
                 )
 
+        elif action == "retry_today_failed_analysis":
+            # Repair previously failed AI analyses on verified existing leads,
+            # then store eligible drafts without ever sending messages.
+            from datetime import timezone
+            from .config import settings
+            from .services.pipeline import recover_failed_auto_analysis
+            from .services.draft_pipeline import prepare_new_zoho_drafts
+            if settings.automated_outreach_enabled:
+                raise RuntimeError("Analysis recovery refuses automated sending")
+            day = datetime.now(timezone.utc).astimezone(
+                settings.local_timezone).date().isoformat()
+            recovered = recover_failed_auto_analysis(db, day, limit=12)
+            drafts = prepare_new_zoho_drafts(db, per_run=30, daily_limit=30)
+            row.result = json.dumps({
+                "date": day, "recovery": recovered, "drafts": drafts,
+                "emails_sent": 0,
+            }, ensure_ascii=False)
+
         elif action == "start_campaign":
             niche = str(payload.get("niche") or "").strip()
             if not niche:

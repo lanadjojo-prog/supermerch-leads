@@ -17,7 +17,7 @@ import httpx
 
 from ..config import settings
 from .discovery import DiscoveredCompany, normalize_domain
-from .openai_discovery import public_url, discover_openai
+from .openai_discovery import public_url, discover_openai, DiscoveryError
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +86,10 @@ def _query(lat: float, lon: float, segment: str) -> str:
     for key, pattern in SELECTORS[segment]:
         # All keys/patterns are internal constants, never user-supplied regex.
         statements.append(
-            f'nwr(around:4500,{lat:.4f},{lon:.4f})["name"]["website"]["{key}"~"^{pattern}$"];'
+            f'nwr(around:3000,{lat:.4f},{lon:.4f})["name"]["website"]["{key}"~"^{pattern}$"];'
         )
         statements.append(
-            f'nwr(around:4500,{lat:.4f},{lon:.4f})["name"]["contact:website"]["{key}"~"^{pattern}$"];'
+            f'nwr(around:3000,{lat:.4f},{lon:.4f})["name"]["contact:website"]["{key}"~"^{pattern}$"];'
         )
     return "[out:json][timeout:18];(" + "".join(statements) + ");out tags center 120;"
 
@@ -146,7 +146,7 @@ def discover_open_data(query: str, region: str, limit: int = 12, *,
         if cached and now - cached[0] < 6 * 3600:
             return _parse_elements(cached[1], max(1, min(20, limit)))
         if now < _BLOCKED_UNTIL:
-            return []
+            raise DiscoveryError("open_data_source_cooldown")
         # The HTTP request is performed under the process lock: never run
         # parallel Overpass requests from one worker.
         wait = max(0, 5 - (now - _LAST_REQUEST))
@@ -163,26 +163,26 @@ def discover_open_data(query: str, region: str, limit: int = 12, *,
                     )
                 # Never evade a public host's rate limits with another host.
                 if resp.status_code in (429, 406, 503, 504):
-                    _BLOCKED_UNTIL = time.monotonic() + 180
-                    logger.warning("OSM server busy: HTTP %s; cooldown 180s", resp.status_code)
-                    return []
+                    _BLOCKED_UNTIL = time.monotonic() + 600
+                    logger.warning("OSM server busy: HTTP %s; cooldown 600s", resp.status_code)
+                    raise DiscoveryError("open_data_source_rate_limited")
                 resp.raise_for_status()
                 elements = resp.json().get("elements", [])
                 if not isinstance(elements, list):
                     elements = []
                 break
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError) as exc:
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ProxyError) as exc:
                 logger.warning("OSM endpoint unreachable (category=%s); alternate endpoint next",
                                type(exc).__name__)
                 continue
             except (httpx.HTTPError, ValueError, TypeError) as exc:
-                _BLOCKED_UNTIL = time.monotonic() + 90
+                _BLOCKED_UNTIL = time.monotonic() + 600
                 logger.warning("OSM search unavailable (category=%s)", type(exc).__name__)
-                return []
+                raise DiscoveryError("open_data_source_failed") from None
         if elements is None:
-            _BLOCKED_UNTIL = time.monotonic() + 90
+            _BLOCKED_UNTIL = time.monotonic() + 600
             logger.warning("OSM all endpoints unreachable; no companies invented")
-            return []
+            raise DiscoveryError("open_data_source_unreachable")
         _CACHE[cache_key] = (time.monotonic(), elements)
         if len(_CACHE) > 100:
             _CACHE.clear()

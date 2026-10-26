@@ -4,6 +4,9 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse, unquote
 
+from .openai_discovery import public_url
+from .site_verification import _public_dns_host
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -40,6 +43,26 @@ def _host(url: str) -> str:
     return h[4:] if h.startswith("www.") else h
 
 
+def _safe_get(client: httpx.Client, url: str, original_host: str) -> httpx.Response | None:
+    """Fetch only public HTTP(S) hosts, including EACH same-host redirect hop.
+
+    OSM tags and website links are untrusted input. Never allow an HTTP redirect
+    into a private address or a different domain.
+    """
+    for _ in range(5):
+        if not public_url(url) or _host(url) != original_host or not _public_dns_host(url):
+            return None
+        response = client.get(url)
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("location", "")
+            if not location:
+                return None
+            url = urljoin(url, location)
+            continue
+        return response
+    return None
+
+
 def crawl_website(start_url: str) -> CrawlResult:
     result = CrawlResult()
     if not start_url.startswith(("http://", "https://")):
@@ -49,15 +72,15 @@ def crawl_website(start_url: str) -> CrawlResult:
     visited: set[str] = set()
     headers = {"User-Agent": "Mozilla/5.0 (compatible; SuperMerchLeadResearch/1.0; +https://supermerch.nl/)"}
 
-    with httpx.Client(timeout=settings.crawl_timeout_seconds, follow_redirects=True, headers=headers) as client:
+    with httpx.Client(timeout=settings.crawl_timeout_seconds, follow_redirects=False, headers=headers) as client:
         while candidates and len(result.pages) < settings.max_crawl_pages:
             url = candidates.pop(0)
             if url in visited:
                 continue
             visited.add(url)
             try:
-                response = client.get(url)
-                if response.status_code >= 400 or "text/html" not in response.headers.get("content-type", ""):
+                response = _safe_get(client, url, _host(start_url))
+                if response is None or response.status_code >= 400 or "text/html" not in response.headers.get("content-type", ""):
                     continue
             except httpx.HTTPError:
                 continue

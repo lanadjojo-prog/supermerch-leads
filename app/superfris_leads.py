@@ -350,7 +350,8 @@ def run_superfris_pass(db: Session) -> dict:
         return {"status": "already_running", "sent": 0}
     try:
         day = local_now.date().isoformat()
-        slot_key = f"superfris-hour-{day}-{local_now.hour:02d}"
+        # One-time new pipeline namespace: old failed API slots must not block OSM recovery.
+        slot_key = f"superfris-hour-{day}-{local_now.hour:02d}-osm-v1"
         if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == slot_key)):
             return {"status": "slot_already_claimed", "date": day, "sent": 0}
         record = ChatCommand(command_id=slot_key, action="superfris_discovery", status="running")

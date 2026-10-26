@@ -25,7 +25,7 @@ from .superfris_leads import (
 
 logger = logging.getLogger(__name__)
 BACKUP_FOLDER = "Superfris_Oude_Concepten"
-LIMIT = 300
+LIMIT = 180
 
 
 def _decode(s: str) -> str:
@@ -65,6 +65,7 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
         "already_html": 0, "skipped_unmatched": 0,
         "converted": 0, "failed": 0, "emails_sent": 0,
     }
+    logger.warning("Superfris HTML migration started mode=%s", output["mode"])
     password = os.getenv("SUPERFRIS_STRATO_PASSWORD", "")
     if not password:
         output["status"] = "missing_mailbox_secret"
@@ -82,6 +83,7 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
             ).where(SuperfrisDraftAttempt.status == "saved")
         ).all()
         output["saved_db_leads"] = len(leads)
+        logger.warning("Superfris HTML migration saved DB leads=%d", len(leads))
         if not leads:
             output["status"] = "no_saved_lead_drafts"
             return output
@@ -118,6 +120,7 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
             return output
         uids = (search[0] or b"").split()
         output["searched_uids"] = min(len(uids), LIMIT)
+        logger.warning("Superfris HTML migration IMAP candidates=%d, safe_move=%s", output["searched_uids"], safe_move)
         # Skip older messages if the mailbox contains more than LIMIT user drafts.
         already_html_ids = set()
         eligible = []
@@ -152,6 +155,7 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
             eligible.append((uid, exact[0]))
 
         output["found_exact_legacy_drafts"] = len(eligible)
+        logger.warning("Superfris HTML migration exactly matched=%d already_html=%d skipped=%d",len(eligible),output["already_html"],output["skipped_unmatched"])
         if not execute:
             output["status"] = "preview_complete"
             return output

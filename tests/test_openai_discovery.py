@@ -71,12 +71,15 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(candidates[0].website, "https://club.nl")
 
     def test_source_free_discovery_requires_live_verification(self):
-        with patch("app.services.openai_discovery.settings", SimpleNamespace(
-            openai_api_key="test", openai_discovery_model="gpt-4.1",
-            local_timezone=__import__('datetime').timezone.utc,
-        )), patch("app.services.openai_discovery.OpenAI") as factory, \\
-             patch("app.services.openai_discovery.verify_live_business_url",
-                   return_value="https://club.nl") as verification:
+        with (
+            patch("app.services.openai_discovery.settings", SimpleNamespace(
+                openai_api_key="test", openai_discovery_model="gpt-4.1",
+                local_timezone=__import__('datetime').timezone.utc,
+            )),
+            patch("app.services.openai_discovery.OpenAI") as factory,
+            patch("app.services.openai_discovery.verify_live_business_url",
+                  return_value="https://club.nl") as verification,
+        ):
             client = factory.return_value.__enter__.return_value
             data = response([{"name": "Club", "website": "https://club.nl"}])
             data["output"][0]["action"]["sources"] = None

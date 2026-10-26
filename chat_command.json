@@ -1,5 +1,5 @@
 {
-  "command_id": "superfris-html-drafts-preview-20261026-v1",
+  "command_id": "superfris-html-drafts-preview-20261026-v2",
   "action": "reformat_superfris_drafts",
   "payload": {
     "execute": false

@@ -18,6 +18,7 @@ class Settings:
     app_base_url: str = os.getenv("APP_BASE_URL", "https://supermerch-leads.onrender.com").rstrip("/")
     session_secret: str = os.getenv("SESSION_SECRET", "dev-secret-change-me")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./supermerch_leads.db")
+    free_mode: bool = os.getenv("LEADS_FREE_MODE", "true").lower() not in {"0", "false", "no", "off"}
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1")
     openai_discovery_model: str = os.getenv("OPENAI_DISCOVERY_MODEL", "gpt-4.1")

@@ -192,3 +192,88 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
         "official_contacts": official_contacts,
         "dated_opportunities": dated_opportunities,
     }
+
+
+def recover_failed_auto_analysis(db: Session, day_iso: str, *, limit: int = 12) -> dict:
+    """Retry today's previously crawled but AI-failed prospects after model repair.
+
+    No external email is sent here. Each lead/domain keeps its existing identity;
+    only its analysis, verified contact and review status can be changed.
+    """
+    failed = db.scalars(
+        select(Lead).join(Campaign).where(
+            Campaign.name.like(f"AUTO {day_iso} |%"),
+            Lead.status == "analysis_failed",
+            Lead.crawl_excerpt.is_not(None),
+        ).order_by(Lead.id.asc()).limit(min(max(limit, 0), 30))
+    ).all()
+    counts = {"retried": 0, "recovered": 0, "qualified": 0,
+              "contacts": 0, "dated_intent": 0, "analysis_errors": 0}
+    for lead in failed:
+        counts["retried"] += 1
+        campaign = db.get(Campaign, lead.campaign_id)
+        if campaign is None:
+            continue
+        # Refresh contact pages so newly supported mailto links are picked up.
+        # Never guess a contact or preserve unverified address metadata.
+        crawled = crawl_website(lead.website)
+        if not crawled.pages:
+            continue
+        evidence = crawled.combined_text[:50000]
+        opportunities = detect_purchase_opportunities(crawled.pages)
+        triggers = detect_triggers(crawled.pages)
+        if opportunities:
+            counts["dated_intent"] += 1
+        try:
+            analysis = analyze_company(lead.company_name, campaign.niche, evidence)
+            analysis = _apply_trigger_context(analysis, opportunities or triggers)
+            if opportunities:
+                analysis["recommended_offer"] = _offer_for_opportunity(
+                    campaign.niche, opportunities[0])
+        except Exception as exc:
+            counts["analysis_errors"] += 1
+            logger.warning("Recovered lead AI analysis still failing (category=%s; model=%s)",
+                           type(exc).__name__, settings.openai_model)
+            continue
+        lead.crawl_excerpt = evidence
+        lead.email, lead.email_source_url = choose_best_email(crawled.emails)
+        contact_available = bool(lead.email and lead.email_source_url)
+        if contact_available:
+            counts["contacts"] += 1
+        known_evidence = {
+            (trigger.trigger_type, trigger.source_url)
+            for trigger in lead.triggers
+        }
+        for item in opportunities + triggers:
+            key = (str(item.get("trigger_type")), str(item.get("source_url")))
+            if key in known_evidence:
+                continue
+            _persist_triggers(db, lead, [item])
+            known_evidence.add(key)
+        scored = score_lead(analysis, campaign.niche, triggers=triggers,
+                            opportunities=opportunities,
+                            contact_available=contact_available)
+        lead.score = scored.score
+        lead.score_reasons = "\\n".join(scored.reasons)
+        for field in (
+            "industry", "company_summary", "employee_signal", "vacancies_signal",
+            "employer_branding_signal", "event_signal", "growth_signal", "merch_signal",
+            "recommended_offer", "lead_reason",
+        ):
+            setattr(lead, field, analysis.get(field))
+        if scored.auto_eligible:
+            lead.status = "ready_for_review"
+            try:
+                lead.outreach_text = generate_outreach(
+                    lead.company_name, lead.contact_name, analysis)
+            except Exception as exc:
+                logger.warning("Recovered lead copy failed (category=%s)", type(exc).__name__)
+                lead.outreach_text = None
+            if lead.outreach_text:
+                counts["qualified"] += 1
+        else:
+            lead.status = "possible" if lead.score >= 10 else "rejected"
+        db.commit()
+        counts["recovered"] += 1
+    logger.warning("Retry AI-failed leads summary: %s", counts)
+    return counts

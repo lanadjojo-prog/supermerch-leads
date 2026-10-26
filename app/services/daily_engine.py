@@ -89,6 +89,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     run_goal = min(remaining, settings.daily_send_batch)
     sent_this_run = failed_sends = searches_run = created = qualified = trigger_hits = 0
     drafts_created = draft_failures = 0
+    discovery_error = None
     draft_start, draft_end, _ = _today_utc_bounds()
     drafts_already_reserved = _today_draft_count(db, draft_start, draft_end)
     draft_batch = min(30, max(0, settings.daily_send_batch), max(0, 30 - drafts_already_reserved))
@@ -159,11 +160,16 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             try:
                 result = run_campaign(db, campaign)
             except Exception as exc:
+                # Surface an external supplier outage instead of reporting a
+                # successful empty drafting round.
+                discovery_error = (
+                    "google_places_permission_denied"
+                    if "HTTP 403" in str(exc)
+                    else type(exc).__name__
+                )
                 logger.exception(
-                    "Automatische discovery mislukt voor %s / %s: %s",
-                    query,
-                    region,
-                    exc,
+                    "Automatische discovery geblokkeerd (%s) voor %s / %s: %s",
+                    discovery_error, query, region, exc,
                 )
                 break
 
@@ -200,7 +206,9 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
         "zoho_drafts_reserved_today": drafts_reserved_today,
         "zoho_drafts_remaining_today": max(0, 30 - drafts_reserved_today),
         "zoho_draft_attempts_failed": draft_failures,
+        "discovery_error": discovery_error,
         "status": (
+            "discovery_blocked" if discovery_error else
             ("draft_daily_target_reached" if drafts_reserved_today >= 30 else "drafts_only")
             if not settings.automated_outreach_enabled else
             "daily_target_reached"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, unquote
 
 import httpx
 from bs4 import BeautifulSoup
@@ -76,7 +76,22 @@ def crawl_website(start_url: str) -> CrawlResult:
                     result.emails.append(pair)
 
             for a in soup.find_all("a", href=True):
-                href = urljoin(str(response.url), a["href"].split("#")[0])
+                original_href = a["href"].strip()
+                if original_href.lower().startswith("mailto:"):
+                    # Visible contact buttons often contain the address in href
+                    # rather than page text. Mailbox itself must still be sourced
+                    # to this fetched official business website.
+                    address_text = unquote(original_href[7:].split("?", 1)[0])
+                    for value in re.split(r"[,;]", address_text):
+                        address = value.strip().lower()
+                        if EMAIL_RE.fullmatch(address) and not any(
+                            x in address for x in ("example.com", "sentry.io", "wixpress.com")
+                        ):
+                            pair = (address, str(response.url))
+                            if pair not in result.emails:
+                                result.emails.append(pair)
+                    continue
+                href = urljoin(str(response.url), original_href.split("#")[0])
                 if _host(start_url) != _host(href):
                     continue
                 path = urlparse(href).path.lower().strip("/")

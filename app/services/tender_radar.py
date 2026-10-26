@@ -364,7 +364,7 @@ def _heuristic_analysis(title: str, description: str, score: int, matched: list[
     }
 
 def analyze_tender(title: str, description: str, detail_text: str, keyword_score: int, matched: list[str]) -> dict:
-    if not settings.openai_api_key:
+    if settings.free_mode or not settings.openai_api_key:
         return _heuristic_analysis(title, description, keyword_score, matched)
 
     from openai import OpenAI

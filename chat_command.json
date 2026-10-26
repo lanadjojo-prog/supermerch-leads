@@ -1,5 +1,5 @@
 {
-  "command_id": "openai-draft-recovery-20261026-v7",
-  "action": "run_daily_drafts",
+  "command_id": "openai-failed-analysis-recovery-20261026-v8",
+  "action": "retry_today_failed_analysis",
   "payload": {}
 }

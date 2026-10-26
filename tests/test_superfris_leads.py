@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.superfris_leads import _compose_message, _save_strato_draft, _verified_company_email
+from app.superfris_leads import _compose_message, _save_strato_draft, _verified_company_email, _format_draft, _signature_html
 
 
 class SuperfrisPipelineTests(unittest.TestCase):
@@ -27,6 +27,30 @@ class SuperfrisPipelineTests(unittest.TestCase):
         self.assertIn("Voorbeeld BV", text)
         self.assertIn("Giovanni van Superfris", text)
         self.assertNotIn("verouderde website", text)
+
+    def test_html_alternative_uses_signature_and_public_logo(self):
+        msg = _format_draft(
+            "info@example.nl", "Een idee voor Example", 
+            "Hallo,\n\nWe werken graag samen.\n\nGroet,\nGiovanni\nSuperfris",
+            lead_id=123,
+        )
+        self.assertEqual(msg["X-Superfris-Lead-ID"], "123")
+        self.assertTrue(msg.is_multipart())
+        text = msg.get_body(preferencelist=("plain",)).get_content()
+        html_part = msg.get_body(preferencelist=("html",)).get_content()
+        self.assertIn("Met vriendelijke groet,", text)
+        self.assertIn("Giovanni Djojowardi", text)
+        self.assertIn("Gio@superfris.online", html_part)
+        self.assertIn("+31 (0)6 14 99 01 12", html_part)
+        self.assertIn("superfris-v7-00.png", html_part)
+        self.assertNotIn("webmail.strato.com", html_part)
+        self.assertNotIn("Groet,<br>Giovanni<br>Superfris", html_part)
+
+    def test_html_escapes_company_text(self):
+        msg = _format_draft("info@example.nl", "Onderwerp", "Hallo <script>alert(1)</script>")
+        body = msg.get_body(preferencelist=("html",)).get_content()
+        self.assertIn("&lt;script&gt;", body)
+        self.assertNotIn("<script>", body)
 
     def test_appends_draft_without_sending(self):
         fake = MagicMock()

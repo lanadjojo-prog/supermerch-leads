@@ -413,6 +413,7 @@ def _automation_status_payload(db: Session) -> dict:
         "sent_today": sent,
         "drafts_created_today": drafts_created,
         "draft_target": 30,
+        "superfris": superfris_stats(db),
         "daily_target": settings.daily_send_target,
         "remaining": max(0, settings.daily_send_target - sent),
         "campaign": (
@@ -442,7 +443,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     triggered_lead_count = db.scalar(select(func.count(func.distinct(LeadTrigger.lead_id)))) or 0
     top_leads = db.scalars(select(Lead).where(Lead.status == "ready_for_review").order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)).all()
     status = _automation_status_payload(db)
-    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "trigger_count": trigger_count, "triggered_lead_count": triggered_lead_count, "app_name": settings.app_name, "places_ready": (settings.free_mode or bool(settings.openai_api_key)), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status})
+    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "trigger_count": trigger_count, "triggered_lead_count": triggered_lead_count, "app_name": settings.app_name, "places_ready": (settings.free_mode or bool(settings.openai_api_key)), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status, "superfris_status": status["superfris"], "free_mode": settings.free_mode, "automated_outreach_enabled": settings.automated_outreach_enabled})
 
 
 @app.get("/campaigns/new", response_class=HTMLResponse, dependencies=[Depends(auth)])

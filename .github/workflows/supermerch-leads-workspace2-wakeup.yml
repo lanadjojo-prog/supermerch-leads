@@ -1,17 +1,23 @@
 name: SuperMerch Leads Workspace 2 wake-up
+
 on:
+  schedule:
+    # Cover both Dutch winter and summer time; the local-time guard keeps
+    # wake-ups inside 09:00-19:00 Europe/Amsterdam.
+    - cron: "7 7-18 * * *"
   workflow_dispatch:
+
 permissions:
   contents: read
 
 concurrency:
   group: supermerch-leads-ws2-wake
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   wake-lead-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 8
     steps:
       - name: Check local Amsterdam business-hour window
         id: local_time
@@ -23,9 +29,10 @@ jobs:
           else
             echo "in_business_hours=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Wake Workspace 2 through health endpoint
+      - name: Wake active Workspace 2 lead engine (drafts only)
         if: steps.local_time.outputs.in_business_hours == 'true'
+        shell: bash
         run: |
           curl --fail --show-error --silent --max-time 160 \
-            --retry 2 --retry-delay 8 --retry-all-errors \
+            --retry 3 --retry-delay 10 --retry-all-errors \
             https://supermerch-leads-ws2.onrender.com/health

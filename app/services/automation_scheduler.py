@@ -24,7 +24,14 @@ def _claim_hour_slot(db, slot_id: str) -> ChatCommand | None:
             existing.status == "running"
             and existing.created_at <= datetime.utcnow() - timedelta(minutes=20)
         )
-        if existing.status == "error" or stale_running:
+        # If a public discovery provider fails, avoid retrying every health
+        # ping. Allow one fresh attempt at most once every 30 minutes.
+        retry_error = (
+            existing.status == "error"
+            and existing.finished_at is not None
+            and existing.finished_at <= datetime.utcnow() - timedelta(minutes=30)
+        )
+        if retry_error or stale_running:
             existing.status = "running"
             existing.result = None
             existing.finished_at = None

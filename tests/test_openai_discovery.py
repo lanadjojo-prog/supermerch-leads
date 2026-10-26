@@ -30,6 +30,24 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(found[0].website, urls[0])
         self.assertEqual(found[0].source, "openai_web_search")
 
+    def test_nullable_sources_and_annotations_do_not_crash(self):
+        data = response([{"name": "Club", "website": "https://club.nl"}])
+        data["output"][0]["action"]["sources"] = None
+        data["output"][1]["content"][0]["annotations"] = None
+        with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
+            parse_companies(data, 5)
+        data["output"][1]["content"][0]["annotations"] = [
+            {"type": "url_citation", "url": "https://club.nl"}]
+        self.assertEqual(len(parse_companies(data, 5)), 1)
+
+    def test_nullable_message_parts_and_output(self):
+        data = response([])
+        data["output"][1]["content"] = None
+        with self.assertRaisesRegex(DiscoveryError, "invalid_json"):
+            parse_companies(data, 5)
+        with self.assertRaisesRegex(DiscoveryError, "search_not_executed"):
+            parse_companies({"status": "completed", "output": None}, 5)
+
     def test_search_is_mandatory(self):
         with self.assertRaisesRegex(DiscoveryError, "search_not_executed"):
             parse_companies(response([], searched=False), 12)

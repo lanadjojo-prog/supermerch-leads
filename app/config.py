@@ -19,7 +19,7 @@ class Settings:
     session_secret: str = os.getenv("SESSION_SECRET", "dev-secret-change-me")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./supermerch_leads.db")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1")
     openai_discovery_model: str = os.getenv("OPENAI_DISCOVERY_MODEL", "gpt-4.1")
     google_places_api_key: str = os.getenv("GOOGLE_PLACES_API_KEY", "")
     zoho_client_id: str = os.getenv("ZOHO_CLIENT_ID", "")

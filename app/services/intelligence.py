@@ -95,7 +95,7 @@ def heuristic_analysis(company_name: str, website_text: str, niche: str) -> dict
 
 
 def analyze_company(company_name: str, niche: str, website_text: str) -> dict:
-    if not settings.openai_api_key:
+    if settings.free_mode or not settings.openai_api_key:
         return heuristic_analysis(company_name, website_text, niche)
 
     from openai import OpenAI
@@ -191,7 +191,7 @@ def generate_outreach(company_name: str, contact_name: str | None, analysis: dic
     else:
         specific_intro = f"Ik kwam {company_name} tegen via jullie website."
 
-    if not settings.openai_api_key:
+    if settings.free_mode or not settings.openai_api_key:
         if variant == "A":
             return (
                 "Hi!\n\n"

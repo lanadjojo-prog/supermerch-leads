@@ -22,7 +22,8 @@ from .config import settings
 from .database import Base
 from .models import ChatCommand, Lead
 from .services.crawler import crawl_website
-from .services.discovery import discover_google_places, normalize_domain
+from .services.discovery import normalize_domain
+from .services.openai_discovery import discover_openai, DiscoveryError
 from .services.pipeline import choose_best_email
 
 logger = logging.getLogger(__name__)
@@ -298,13 +299,13 @@ def _make_drafts(db: Session) -> int:
 
 def _discover(db: Session, day: str, slot: int) -> int:
     created = 0
-    if not settings.google_places_api_key:
-        return 0
+    if not settings.openai_api_key:
+        raise DiscoveryError("openai_discovery_api_key_missing")
     idx = (datetime.fromisoformat(day).toordinal() * 3 + slot * 7) % len(CATEGORIES)
     for n in range(MAX_SEARCHES_PER_PASS):
         category, search, offer = CATEGORIES[(idx + n) % len(CATEGORIES)]
         region = REGIONS[(idx + slot + n * 3) % len(REGIONS)]
-        companies = discover_google_places(search, region, limit=10)
+        companies = discover_openai(search, region, limit=10, purpose="design")
         for company in companies:
             domain = normalize_domain(company.website)
             if not domain or db.scalar(select(SuperfrisLead.id).where(SuperfrisLead.domain == domain)):
@@ -371,8 +372,7 @@ def run_superfris_pass(db: Session) -> dict:
                 db.rollback()
                 created = 0
                 discovery_error = (
-                    "google_places_permission_denied"
-                    if "HTTP 403" in str(discovery_exc)
+                    str(discovery_exc) if str(discovery_exc).startswith("openai_discovery_")
                     else type(discovery_exc).__name__
                 )
                 logger.exception("Superfris company discovery unavailable: %s", discovery_error)

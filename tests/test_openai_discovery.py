@@ -61,6 +61,30 @@ class DiscoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
             parse_companies(data, 1)
 
+    def test_source_free_candidates_are_untrusted_until_verified(self):
+        data = response([{"name": "Club", "website": "https://club.nl"}])
+        data["output"][0]["action"]["sources"] = None
+        # The ordinary parser cannot accept the unverified website.
+        with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
+            parse_companies(data, 1)
+        candidates = parse_companies(data, 1, allow_source_free=True)
+        self.assertEqual(candidates[0].website, "https://club.nl")
+
+    def test_source_free_discovery_requires_live_verification(self):
+        with patch("app.services.openai_discovery.settings", SimpleNamespace(
+            openai_api_key="test", openai_discovery_model="gpt-4.1",
+            local_timezone=__import__('datetime').timezone.utc,
+        )), patch("app.services.openai_discovery.OpenAI") as factory, \\
+             patch("app.services.openai_discovery.verify_live_business_url",
+                   return_value="https://club.nl") as verification:
+            client = factory.return_value.__enter__.return_value
+            data = response([{"name": "Club", "website": "https://club.nl"}])
+            data["output"][0]["action"]["sources"] = None
+            client.responses.create.return_value.model_dump.return_value = data
+            found = discover_openai("club", "Breda", 1)
+            self.assertEqual(found[0].source, "openai_live_site_verified")
+            verification.assert_called_once_with("https://club.nl")
+
     def test_search_is_mandatory(self):
         with self.assertRaisesRegex(DiscoveryError, "search_not_executed"):
             parse_companies(response([], searched=False), 12)

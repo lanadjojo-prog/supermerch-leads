@@ -254,7 +254,7 @@ def recover_failed_auto_analysis(db: Session, day_iso: str, *, limit: int = 12) 
                             opportunities=opportunities,
                             contact_available=contact_available)
         lead.score = scored.score
-        lead.score_reasons = "\\n".join(scored.reasons)
+        lead.score_reasons = "\n".join(scored.reasons)
         for field in (
             "industry", "company_summary", "employee_signal", "vacancies_signal",
             "employer_branding_signal", "event_signal", "growth_signal", "merch_signal",

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
-  <div><p class="eyebrow">SUPERMERCH LEAD ENGINE</p><h1>Van bedrijvenlijst naar echte koopkansen.</h1><p>We selecteren op recente koopaanleiding met datum en bron. Oude vermeldingen en algemene doelgroepfit blijven in onderzoek.</p></div>
+  <div><p class="eyebrow">SUPERMERCH + SUPERFRIS LEADMACHINE</p><h1>Twee merken. Eén leadmachine.</h1><p>We zoeken openbare bedrijfswebsites, controleren zakelijke contactadressen en plaatsen uitsluitend conceptmails. Zonder bewezen koopaanleiding doen we ook geen alsof-claims.</p></div>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
     <form method="post" action="/automation/run-now" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Starten…';">
       <button class="button" type="submit">Start Lead Engine nu</button>
@@ -10,10 +10,10 @@
   </div>
 </section>
 <div class="setup">
-  <span class="{{ 'ok' if places_ready else 'warn' }}">OpenAI zoeken {{ 'gereed' if places_ready else 'API-key nodig' }}</span>
-  <span class="{{ 'ok' if ai_ready else 'muted' }}">AI {{ 'gereed' if ai_ready else 'fallback actief' }}</span>
+  <span class="ok">Bedrijven zoeken: {{ 'OpenStreetMap (geen API-kosten)' if free_mode else 'OpenAI' }}</span>
+  <span class="ok">Mailteksten: {{ 'feitelijke templates (geen AI-kosten)' if free_mode else 'AI/heuristiek' }}</span>
   <span class="{{ 'ok' if zoho_connected else 'muted' }}">Zoho Mail {{ 'verbonden' if zoho_connected else 'niet verbonden' }}</span>
-  <span class="ok">Zoho-concepten {{ automation_status.drafts_created_today }}/30 maximaal · automatisch verzenden uit</span>
+  <span class="ok">SuperMerch {{ automation_status.drafts_created_today }}/30 · Superfris {{ superfris_status.saved_today }}/30</span>
 </div>
 <section class="panel" id="automation-status-panel">
   <div class="panel-head">
@@ -40,7 +40,8 @@
 {% if request.query_params.get('message') %}<div class="notice ok">{{ request.query_params.get('message') }}</div>{% endif %}
 {% if request.query_params.get('error') == '1' %}<div class="notice warn">{{ request.query_params.get('message') }}</div>{% endif %}
 <div class="stats">
-  <div class="stat"><span>Zoho-concepten vandaag</span><strong>{{ automation_status.drafts_created_today }} / {{ automation_status.draft_target }}</strong></div>
+  <div class="stat"><span>SuperMerch · Zoho-concepten vandaag</span><strong>{{ automation_status.drafts_created_today }} / {{ automation_status.draft_target }}</strong></div>
+  <div class="stat"><span>Superfris · STRATO-concepten vandaag</span><strong id="superfris-draft-count">{{ superfris_status.saved_today }} / {{ superfris_status.daily_limit }}</strong><small>{{ superfris_status.pending_drafts }} prospecten in wachtrij</small></div>
   <div class="stat"><span>Review</span><strong>{{ counts.get('ready_for_review', 0) }}</strong></div>
   <div class="stat"><span>Goedgekeurd</span><strong>{{ counts.get('approved', 0) }}</strong></div>
   <div class="stat"><span>Benaderd + vervolgstappen</span><strong>{{ counts.get('contacted', 0) + counts.get('responded', 0) + counts.get('quoted', 0) + counts.get('won', 0) + counts.get('lost', 0) }}</strong></div>
@@ -71,11 +72,11 @@
 {% if counts.get('approved', 0) > 0 %}
 <section class="panel"><div class="panel-head">
   <div><h2>Klaar om te versturen</h2><p>{{ counts.get('approved', 0) }} goedgekeurde mail{{ '' if counts.get('approved', 0) == 1 else 's' }}.</p></div>
-  {% if zoho_connected %}<form method="post" action="/leads/send-all-approved" onsubmit="return confirm('Alle goedgekeurde mails nu via Zoho versturen?');"><button class="button" type="submit">Verstuur alle goedgekeurde mails</button></form>
-  {% else %}<a class="button" href="/integrations">Verbind Zoho Mail</a>{% endif %}
+  {% if zoho_connected and automated_outreach_enabled %}<form method="post" action="/leads/send-all-approved" onsubmit="return confirm('Alle goedgekeurde mails nu via Zoho versturen?');"><button class="button" type="submit">Verstuur alle goedgekeurde mails</button></form>
+  {% elif not zoho_connected %}<a class="button" href="/integrations">Verbind Zoho Mail</a>{% endif %}
 </div></section>
 {% endif %}
-<section class="panel"><div class="panel-head"><h2>Campagnes</h2></div>
+<section class="panel"><div class="panel-head"><h2>SuperMerch campagnes</h2></div>
 {% if campaigns %}<div class="table-wrap"><table><thead><tr><th>Campagne</th><th>Status</th><th>Leads</th><th>Laatste run</th></tr></thead><tbody>
 {% for c in campaigns %}<tr><td><a href="/campaigns/{{ c.id }}"><strong>{{ c.name }}</strong></a><br><small>{{ c.search_query }}</small></td><td><span class="badge {{ c.status }}">{{ c.status }}</span></td><td>{{ c.leads|length }}</td><td>{{ c.last_run_at.strftime('%d-%m %H:%M') if c.last_run_at else '—' }}</td></tr>{% endfor %}
 </tbody></table></div>{% else %}<div class="empty">Nog geen campagnes. Maak je eerste campagne aan.</div>{% endif %}</section>
@@ -93,6 +94,8 @@ async function refreshAutomationStatus() {
     const detail = document.getElementById("automation-status-detail");
     if (label) label.textContent = data.label;
     if (sent) sent.textContent = data.drafts_created_today + " / " + data.draft_target;
+    const sf = document.getElementById("superfris-draft-count");
+    if (sf && data.superfris) sf.textContent = data.superfris.saved_today + " / " + data.superfris.daily_limit;
     if (remaining) remaining.textContent = (data.draft_target - data.drafts_created_today) + " plekken over · geen automatische verzending";
     if (detail) {
       if (data.campaign) {

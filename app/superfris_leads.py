@@ -23,7 +23,7 @@ from .database import Base
 from .models import ChatCommand, Lead
 from .services.crawler import crawl_website
 from .services.discovery import normalize_domain
-from .services.openai_discovery import discover_openai, DiscoveryError
+from .services.open_data_discovery import discover_businesses
 from .services.pipeline import choose_best_email
 
 logger = logging.getLogger(__name__)
@@ -36,15 +36,15 @@ CATEGORIES = (
     ("Horeca", "restaurant", "menu- en drukwerkontwerp"),
     ("Horeca", "lunchroom", "menukaarten en promotiemateriaal"),
     ("Retail", "speciaalzaak", "huisstijl en promotiemateriaal"),
-    ("Sport", "sportschool", "website en grafische uitingen"),
+    ("Sport", "sportschool", "campagnebeelden en grafische uitingen"),
     ("Sport", "vechtsportschool", "posters en grafische uitingen"),
-    ("Zorg", "fysiotherapiepraktijk", "website en huisstijl"),
-    ("Beauty", "kapsalon", "website en promotiemateriaal"),
+    ("Zorg", "fysiotherapiepraktijk", "huisstijl en promotiemateriaal"),
+    ("Beauty", "kapsalon", "branding en promotiemateriaal"),
     ("Beauty", "schoonheidssalon", "logo en huisstijl"),
-    ("Bouw", "installatiebedrijf", "website en huisstijl"),
-    ("Bouw", "schildersbedrijf", "website en huisstijl"),
+    ("Bouw", "installatiebedrijf", "huisstijl en commerciële vormgeving"),
+    ("Bouw", "schildersbedrijf", "huisstijl en drukwerk"),
     ("Evenementen", "evenementenorganisatie", "posters, flyers en artwork"),
-    ("Verenigingen", "sportvereniging", "website en verenigingsdrukwerk"),
+    ("Verenigingen", "sportvereniging", "posters en verenigingsdrukwerk"),
 )
 REGIONS = ("Oosterhout", "Breda", "Tilburg", "Etten-Leur", "Dongen",
            "Waalwijk", "Roosendaal", "Bergen op Zoom", "Den Bosch",
@@ -107,7 +107,7 @@ def _verified_company_email(domain: str, emails: list[tuple[str, str]]) -> tuple
 
 def _compose_message(company: str, region: str, category: str, offer: str, website_excerpt: str) -> str:
     """Fact-limited first contact: no claims about poor design, age, budgets or results."""
-    if settings.openai_api_key:
+    if settings.openai_api_key and not settings.free_mode:
         try:
             from openai import OpenAI
             prompt = (
@@ -133,7 +133,7 @@ def _compose_message(company: str, region: str, category: str, offer: str, websi
     return (
         "Hallo,\n\n"
         f"Ik kwam de website van {company} tegen tijdens mijn zoektocht naar bedrijven in {region}.\n\n"
-        "Ik ben Giovanni van Superfris, web- en grafisch designer in Oosterhout. "
+        "Ik ben Giovanni van Superfris, grafisch ontwerper in Oosterhout. "
         f"Ik help lokale organisaties onder meer met {offer}, "
         "zonder ingewikkelde trajecten.\n\n"
         "Zou het interessant zijn om hier eens vrijblijvend over te sparren?\n\n"
@@ -299,13 +299,11 @@ def _make_drafts(db: Session) -> int:
 
 def _discover(db: Session, day: str, slot: int) -> int:
     created = 0
-    if not settings.openai_api_key:
-        raise DiscoveryError("openai_discovery_api_key_missing")
     idx = (datetime.fromisoformat(day).toordinal() * 3 + slot * 7) % len(CATEGORIES)
     for n in range(MAX_SEARCHES_PER_PASS):
         category, search, offer = CATEGORIES[(idx + n) % len(CATEGORIES)]
         region = REGIONS[(idx + slot + n * 3) % len(REGIONS)]
-        companies = discover_openai(search, region, limit=10, purpose="design")
+        companies = discover_businesses(search, region, limit=10, purpose="design", niche=category)
         for company in companies:
             domain = normalize_domain(company.website)
             if not domain or db.scalar(select(SuperfrisLead.id).where(SuperfrisLead.domain == domain)):

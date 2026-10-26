@@ -28,7 +28,7 @@ from .services.automation_scheduler import run_automation_pass, run_automation_s
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds
 from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest  # registers isolated tables
-from .services.discovery import discover_google_places
+from .services.openai_discovery import discover_openai
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
 from .services.pipeline import run_campaign
@@ -275,7 +275,7 @@ async def internal_discovery_places(request: Request):
         raise HTTPException(400, "query and region are required")
 
     try:
-        companies = discover_google_places(query, region, limit=limit)
+        companies = discover_openai(query, region, limit=limit)
     except Exception as exc:
         logger.exception("Discovery bridge failed for %s / %s", query, region)
         raise HTTPException(502, str(exc))
@@ -442,7 +442,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     triggered_lead_count = db.scalar(select(func.count(func.distinct(LeadTrigger.lead_id)))) or 0
     top_leads = db.scalars(select(Lead).where(Lead.status == "ready_for_review").order_by(Lead.score.desc(), Lead.created_at.desc()).limit(10)).all()
     status = _automation_status_payload(db)
-    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "trigger_count": trigger_count, "triggered_lead_count": triggered_lead_count, "app_name": settings.app_name, "places_ready": bool(settings.google_places_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status})
+    return templates.TemplateResponse(request, "dashboard.html", {"campaigns": campaigns, "counts": counts, "top_leads": top_leads, "trigger_count": trigger_count, "triggered_lead_count": triggered_lead_count, "app_name": settings.app_name, "places_ready": bool(settings.openai_api_key), "ai_ready": bool(settings.openai_api_key), "zoho_connected": zoho_mail.connected(db), "sent_today": status["sent_today"], "daily_target": settings.daily_send_target, "automation_status": status})
 
 
 @app.get("/campaigns/new", response_class=HTMLResponse, dependencies=[Depends(auth)])

@@ -182,7 +182,7 @@ def _lead_readiness_diagnostic():
     from sqlalchemy import func, select
     from app.database import SessionLocal
     from app.models import Campaign, Lead, ChatCommand
-    from app.services.discovery import discover_google_places
+    from app.services.openai_discovery import discover_openai
     from app.config import settings
 
     db = SessionLocal()
@@ -216,13 +216,13 @@ def _lead_readiness_diagnostic():
         db.close()
 
     try:
-        matches = discover_google_places("carnavalsvereniging", "Oosterhout", 1)
+        matches = discover_openai("carnavalsvereniging", "Oosterhout", 1)
         print(
-            f"LEADS_READINESS_PLACES_OK results={len(matches)} emails_sent=0",
+            f"LEADS_READINESS_SEARCH_OK results={len(matches)} emails_sent=0",
             flush=True,
         )
     except Exception as exc:
-        print(f"LEADS_READINESS_PLACES_FAILED category={type(exc).__name__} emails_sent=0", flush=True)
+        print(f"LEADS_READINESS_SEARCH_FAILED category={type(exc).__name__} emails_sent=0", flush=True)
     print(
         "LEADS_READINESS_AI_CONFIGURED=" + str(bool(settings.openai_api_key))
         + " emails_sent=0",

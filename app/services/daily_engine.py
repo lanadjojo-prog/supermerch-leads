@@ -163,8 +163,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
                 # Surface an external supplier outage instead of reporting a
                 # successful empty drafting round.
                 discovery_error = (
-                    "google_places_permission_denied"
-                    if "HTTP 403" in str(exc)
+                    str(exc) if str(exc).startswith("openai_discovery_")
                     else type(exc).__name__
                 )
                 logger.exception(

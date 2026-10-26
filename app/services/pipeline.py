@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from ..models import Campaign, Lead, LeadTrigger
 from .crawler import crawl_website
-from .discovery import discover_google_places, normalize_domain
+from .discovery import normalize_domain
+from .openai_discovery import discover_openai
 from .intelligence import analyze_company, generate_outreach
 from .scoring import score_lead
 from .triggers import detect_triggers
@@ -75,7 +76,7 @@ def run_campaign(db: Session, campaign: Campaign) -> dict:
     db.commit()
 
     try:
-        companies = discover_google_places(campaign.search_query, campaign.region, campaign.target_count)
+        companies = discover_openai(campaign.search_query, campaign.region, campaign.target_count)
     except Exception:
         campaign.status = "error"
         db.commit()

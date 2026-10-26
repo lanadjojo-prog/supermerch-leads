@@ -35,7 +35,7 @@ PRODUCT_RE = re.compile(
     r"supporterssjaals?|give-aways?|drukwerk|bedrukte\s+kleding)\b", re.I
 )
 EVENT_RE = re.compile(
-    r"\b(?:festival|toernooi|sportevenement|open\s+dag|bedrijfsfeest|"
+    r"\b(?:festival|(?:sport)?toernooi|sportevenement|open\s+dag|bedrijfsfeest|"
     r"jubileum|lustrum|beurs|congres|evenement|heropening|"
     r"nieuwe\s+vestiging|opening)\b", re.I
 )

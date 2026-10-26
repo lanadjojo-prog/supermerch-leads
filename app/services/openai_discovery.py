@@ -91,7 +91,7 @@ def parse_companies(data, limit):
 
 
 def discover_openai(query, region, limit=25):
-    if not settings.openai_api_key:
+    if not settings.openai_api_key.strip():
         raise DiscoveryError("openai_discovery_api_key_missing")
     if limit <= 0:
         return []
@@ -114,17 +114,22 @@ def discover_openai(query, region, limit=25):
         "lege lijst zijn beter dan verzonnen resultaten."
     )
     try:
-        with OpenAI(api_key=settings.openai_api_key, timeout=90, max_retries=1) as client:
+        with OpenAI(api_key=settings.openai_api_key.strip(), timeout=90, max_retries=1) as client:
             response = client.responses.create(
                 model=settings.openai_discovery_model,
                 tools=[{"type": "web_search"}], tool_choice="required",
                 include=["web_search_call.action.sources"],
-                max_output_tokens=4000, input=prompt,
+                max_output_tokens=4000, input=prompt, store=False,
             )
     except APIError as exc:
         # Do not log API response bodies or credential-bearing request headers.
         status = getattr(exc, "status_code", None)
-        raise DiscoveryError(f"openai_discovery_api_error_{status or type(exc).__name__}") from None
+        code = getattr(exc, "code", None)
+        allowed_codes = {"invalid_api_key", "insufficient_quota", "model_not_found",
+                         "rate_limit_exceeded", "permission_denied", "unsupported_parameter",
+                         "invalid_value", "unsupported_country_region_territory"}
+        reason = code if code in allowed_codes else "unspecified"
+        raise DiscoveryError(f"openai_discovery_api_error_{status or type(exc).__name__}_{reason}") from None
     companies = parse_companies(response.model_dump(), limit)
     logger.warning("OpenAI web discovery completed: results=%s query=%s region=%s",
                    len(companies), query, region)

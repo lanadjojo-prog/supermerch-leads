@@ -71,6 +71,18 @@ def process_startup_command() -> None:
                     str(result.get("discovery_error") or "discovery_unavailable")
                 )
 
+        elif action == "reformat_superfris_drafts":
+            # Explicit one-off IMAP-only replacement of unchanged, verified
+            # leadmachine drafts, with the originals backed up first.
+            from .superfris_draft_reformatter import migrate_existing_superfris_drafts
+            execute = bool(payload.get("execute", False))
+            result = migrate_existing_superfris_drafts(execute=execute)
+            row.result = json.dumps(result, ensure_ascii=False)
+            if result.get("status") in {"imap_error", "backup_folder_unavailable",
+                                      "draft_folder_missing", "draft_folder_select_failed",
+                                      "server_cannot_safely_replace_drafts"}:
+                logger.warning("Superfris reformatter could not finish: %s", result)
+
         elif action == "retry_today_failed_analysis":
             # Repair previously failed AI analyses on verified existing leads,
             # then store eligible drafts without ever sending messages.

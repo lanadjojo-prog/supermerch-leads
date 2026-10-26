@@ -48,6 +48,19 @@ class DiscoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(DiscoveryError, "search_not_executed"):
             parse_companies({"status": "completed", "output": None}, 5)
 
+    def test_same_company_domain_but_different_page_uses_observed_url(self):
+        data = response([{"name": "Club", "website": "https://club.nl"}],
+                        sources=["https://club.nl/agenda"])
+        found = parse_companies(data, 1)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].website, "https://club.nl/agenda")
+
+    def test_unrelated_source_cannot_verify_generated_url(self):
+        data = response([{"name": "Club", "website": "https://club.nl"}],
+                        sources=["https://directory.nl/club"])
+        with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
+            parse_companies(data, 1)
+
     def test_search_is_mandatory(self):
         with self.assertRaisesRegex(DiscoveryError, "search_not_executed"):
             parse_companies(response([], searched=False), 12)

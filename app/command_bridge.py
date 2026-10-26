@@ -57,7 +57,21 @@ def process_startup_command() -> None:
         action = command["action"]
         payload = command.get("payload") or {}
 
-        if action == "start_campaign":
+        if action == "run_daily_drafts":
+            # Explicit one-off recovery command; it is never a send action.
+            from .config import settings
+            from .services.daily_engine import run_daily_lead_engine
+            if settings.automated_outreach_enabled:
+                raise RuntimeError("Manual draft recovery refuses automated sending")
+            result = run_daily_lead_engine(db)
+            row.result = json.dumps(result, ensure_ascii=False)
+            if result.get("status") == "discovery_blocked":
+                raise RuntimeError(
+                    "Draft recovery blocked: " +
+                    str(result.get("discovery_error") or "discovery_unavailable")
+                )
+
+        elif action == "start_campaign":
             niche = str(payload.get("niche") or "").strip()
             if not niche:
                 raise ValueError("niche is required")

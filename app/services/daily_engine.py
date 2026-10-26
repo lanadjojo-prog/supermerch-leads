@@ -14,6 +14,7 @@ from ..models import Campaign, Lead
 from . import zoho_mail
 from .outreach_delivery import DailySendLimitReached, remaining_today, send_lead, sent_today
 from .pipeline import run_campaign
+from .openai_discovery import DiscoveryError
 from .draft_pipeline import prepare_new_zoho_drafts, _today_utc_bounds, _today_draft_count
 
 

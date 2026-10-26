@@ -161,7 +161,9 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
             try:
                 result = run_campaign(db, campaign)
             except DiscoveryError as exc:
-                if str(exc) == "openai_discovery_no_verified_sources":
+                if str(exc) in {"openai_discovery_no_verified_sources",
+                                "openai_discovery_invalid_json",
+                                "openai_discovery_sites_unreachable"}:
                     # One narrow category can lack official matching web sources.
                     # Do not halt the other daily searches; never invent leads.
                     logger.warning("Search skipped due to unverifiable sources: %s / %s",

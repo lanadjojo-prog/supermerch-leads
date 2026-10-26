@@ -1,4 +1,4 @@
-"""Prepare Zoho Mail drafts for freshly discovered SuperMerch prospects only.
+"""Prepare Zoho Mail review-only drafts for new, source-verified SuperMerch prospects.
 
 No outbound email is sent from this module. An explicit Zoho mode=draft API
 call is made for each new, qualified, uncontacted lead. Persistent reservations
@@ -19,6 +19,7 @@ from ..config import settings
 from ..models import Campaign, ChatCommand, Lead
 from . import zoho_mail
 from .intelligence import outreach_subject, outreach_variant
+from .scoring import TARGET_SECTORS
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +122,12 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             Campaign.created_at < end,
             Lead.created_at >= start,
             Lead.created_at < end,
-            Lead.status == "ready_for_review",
+            Lead.status.in_(("ready_for_review", "possible")),
             Lead.email.is_not(None),
             Lead.email_source_url.is_not(None),
             Lead.outreach_text.is_not(None),
-            Lead.score >= 75,
+            Lead.score >= 25,
+            Campaign.niche.in_(TARGET_SECTORS),
         )
         .order_by(Lead.score.desc(), Lead.created_at.asc())
     ).all()
@@ -135,12 +137,10 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             break
         if not _official_email_source(lead):
             continue
-        # A legacy score or generic keyword can never open the drafting gate.
-        if not any(
-            trigger.trigger_type in {"intent_active_request", "intent_upcoming_event"}
-            and trigger.source_url and trigger.evidence
-            for trigger in lead.triggers
-        ):
+        # These are human-review drafts, not evidence of an active buying request.
+        # For fit-only prospects the prepared copy explicitly avoids claiming
+        # intent, a dated event or an earlier relationship. Sending is disabled.
+        if lead.status == "possible" and not lead.outreach_text:
             continue
         # An address can occur on multiple websites. Do not prepare mail for
         # any address already known from another old or new lead.

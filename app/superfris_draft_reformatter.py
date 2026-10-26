@@ -105,15 +105,28 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
         safe_move = "MOVE" in flags or "UIDPLUS" in flags
         output["safe_move_supported"] = safe_move
         output["mailbox_connected"] = True
-        if execute and not safe_move:
-            output["status"] = "server_cannot_safely_replace_drafts"
-            return output
 
         mailbox_name = f'"{folder}"' if " " in folder else folder
         kind, _ = server.select(mailbox_name, readonly=not execute)
         if kind != "OK":
             output["status"] = "draft_folder_select_failed"
             return output
+        kind, previous_deleted = server.uid("SEARCH", None, "DELETED")
+        if kind != "OK":
+            output["status"] = "unable_to_check_deleted_flags"
+            return output
+        deleted_before = set((previous_deleted[0] or b"").split())
+        output["preexisting_deleted_count"] = len(deleted_before)
+        if execute and not safe_move and deleted_before:
+            # Basic IMAP EXPUNGE affects ALL messages flagged as Deleted.
+            # Only use the guarded fallback on a completely clean Drafts folder.
+            output["status"] = "preexisting_deleted_drafts_prevent_safe_replacement"
+            return output
+        output["replacement_method"] = (
+            "uid_move" if "MOVE" in flags else
+            "uid_expunge" if "UIDPLUS" in flags else
+            "guarded_expunge" if not deleted_before else "no_safe_method"
+        )
         kind, search = server.uid("SEARCH", None, "FROM", f'"{MAILBOX}"')
         if kind != "OK":
             output["status"] = "imap_search_failed"
@@ -188,8 +201,18 @@ def migrate_existing_superfris_drafts(*, execute: bool = False) -> dict:
                     kind, _ = server.uid("MOVE", old_uid, BACKUP_FOLDER)
                 else:
                     kind, _ = server.uid("STORE", old_uid, "+FLAGS.SILENT", r"(\Deleted)")
-                    if kind == "OK":
+                    if kind != "OK":
+                        raise RuntimeError("IMAP_MARK_ARCHIVED_FAILED")
+                    if "UIDPLUS" in flags:
                         kind, _ = server.uid("EXPUNGE", old_uid)
+                    else:
+                        # STRATO may not advertise UIDPLUS/MOVE. EXPUNGE is safe
+                        # only if the ONE selected old draft is currently Deleted.
+                        kind, deleted_now = server.uid("SEARCH", None, "DELETED")
+                        if kind != "OK" or set((deleted_now[0] or b"").split()) != {old_uid}:
+                            server.uid("STORE", old_uid, "-FLAGS.SILENT", r"(\Deleted)")
+                            raise RuntimeError("OTHER_DELETED_DRAFTS_DETECTED")
+                        kind, _ = server.expunge()
                 if kind != "OK":
                     raise RuntimeError("IMAP_ORIGINAL_ARCHIVE_FAILED")
                 output["converted"] += 1

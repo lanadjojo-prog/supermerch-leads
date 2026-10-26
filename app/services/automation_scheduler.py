@@ -89,14 +89,14 @@ def run_current_automation_slot(db) -> dict:
     try:
         result = run_daily_lead_engine(db)
         row = db.get(ChatCommand, row.id)
-        row.status = "complete"
+        row.status = "complete" if result.get("ok") else "error"
         row.result = json.dumps(result, ensure_ascii=False)
         row.finished_at = datetime.utcnow()
         db.commit()
         logger.info("Daily automation slot %s complete: %s", slot_id, result)
         return {
-            "ok": True,
-            "status": "complete",
+            "ok": bool(result.get("ok")),
+            "status": row.status,
             "slot_id": slot_id,
             "result": result,
         }

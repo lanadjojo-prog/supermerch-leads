@@ -79,21 +79,35 @@ def parse_companies(data, limit):
             raise ValueError()
     except (ValueError, KeyError, TypeError) as exc:
         raise DiscoveryError("openai_discovery_invalid_json") from exc
+    # The model may return a homepage while the search tool opened an internal page,
+    # or vice versa. The official domain is the identity boundary: when a model
+    # URL and a tool-observed URL share an exact normalized host/domain, keep
+    # the URL actually observed by the tool rather than trusting a generated path.
+    urls_by_domain = {}
+    for source_url in sorted(sources):
+        domain = normalize_domain(source_url)
+        if domain:
+            urls_by_domain.setdefault(domain, []).append(source_url)
     companies, seen = [], set()
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        url = public_url(entry.get("website"))
+        claimed_url = public_url(entry.get("website"))
         name = entry.get("name")
-        domain = normalize_domain(url)
-        if not url or url not in sources or domain in seen or not isinstance(name, str) or not name.strip():
+        domain = normalize_domain(claimed_url)
+        verified_urls = urls_by_domain.get(domain) or []
+        if not claimed_url or not verified_urls or domain in seen or not isinstance(name, str) or not name.strip():
             continue
+        # Prefer exact matching URL; otherwise use the real consulted URL.
+        verified_url = claimed_url if claimed_url in verified_urls else verified_urls[0]
         seen.add(domain)
-        companies.append(DiscoveredCompany(name=name.strip()[:220], website=url,
+        companies.append(DiscoveredCompany(name=name.strip()[:220], website=verified_url,
                                            source="openai_web_search"))
         if len(companies) >= limit:
             break
     if entries and not companies:
+        logger.warning("OpenAI returned unverified companies: entries=%d sources=%d domains=%d",
+                       len(entries), len(sources), len(urls_by_domain))
         raise DiscoveryError("openai_discovery_no_verified_sources")
     return companies
 

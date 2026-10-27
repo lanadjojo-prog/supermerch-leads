@@ -23,7 +23,7 @@
       <dt>Keywordmatch</dt><dd>{{ tender.keyword_matches or '—' }}</dd>
       <dt>Producten</dt><dd>{{ tender.products or '—' }}</dd>
     </dl>
-    {% if tender.source_url %}<p><a class="button ghost small" href="{{ tender.source_url }}" target="_blank" rel="noopener">Open bron bij TenderNed</a></p>{% endif %}
+    {% if tender.source_url %}<p><a class="button ghost small" href="{{ tender.source_url }}" target="_blank" rel="noopener">Open originele aanvraag</a></p>{% endif %}
   </section>
 
   <section class="panel">
@@ -46,7 +46,7 @@
   <div class="panel-head">
     <div>
       <h2>Contact & benadering</h2>
-      <small>Automatisch uit de openbare aanbestedingsdata gehaald.</small>
+      <small>Gebaseerd op openbare bronnen; controleer altijd de toegestane route voordat je mailt of inschrijft.</small>
     </div>
     <form method="post" action="/tenders/{{ tender.id }}/outreach/refresh">
       <button class="button ghost small" type="submit">Opnieuw opbouwen</button>

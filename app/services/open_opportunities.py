@@ -116,7 +116,22 @@ def _parse_response(response) -> list[dict]:
     fence = chr(96) * 3
     if raw.startswith(fence):
         raw = raw.split("\n", 1)[-1].rsplit(fence, 1)[0]
-    payload = json.loads(raw)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        # Search citations or preambles can occasionally wrap JSON.
+        payload = None
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", raw):
+            try:
+                candidate, _ = decoder.raw_decode(raw[match.start():])
+                if isinstance(candidate, dict) and "opportunities" in candidate:
+                    payload = candidate
+                    break
+            except json.JSONDecodeError:
+                continue
+        if payload is None:
+            raise
     found = payload.get("opportunities") or []
     if not isinstance(found, list):
         raise RuntimeError("opportunity_search_invalid_list")
@@ -151,12 +166,35 @@ def _discover_topic(topic: str) -> list[dict]:
         '"deadline":"YYYY-MM-DD of leeg"}]}. '
         "Minder resultaten, of een lege lijst, zijn beter dan twijfelachtige vondsten."
     )
+    schema = {
+        "type": "object", "additionalProperties": False,
+        "properties": {
+            "opportunities": {
+                "type": "array",
+                "items": {
+                    "type": "object", "additionalProperties": False,
+                    "properties": {
+                        "title": {"type": "string"},
+                        "buyer": {"type": "string"},
+                        "url": {"type": "string"},
+                        "evidence": {"type": "string"},
+                        "deadline": {"type": "string"},
+                    },
+                    "required": ["title", "buyer", "url", "evidence", "deadline"],
+                },
+            },
+        },
+        "required": ["opportunities"],
+    }
     with OpenAI(api_key=settings.openai_api_key.strip(), timeout=100, max_retries=1) as client:
         response = client.responses.create(
             model=settings.openai_discovery_model,
             tools=[{"type": "web_search"}], tool_choice="required",
             include=["web_search_call.action.sources"],
-            input=prompt, max_output_tokens=3200, store=False,
+            text={"format": {"type": "json_schema",
+                             "name": "public_buying_opportunities",
+                             "strict": True, "schema": schema}},
+            input=prompt, max_output_tokens=4800, store=False,
         )
     return _parse_response(response)
 
@@ -164,7 +202,7 @@ def run_open_opportunity_scan(db: Session, *, queries: int = 3) -> dict:
     """Day-scoped, idempotent sourced discovery into the existing Tender board."""
     now = datetime.now(timezone.utc).astimezone(settings.local_timezone)
     day = now.date().isoformat()
-    key = f"open-opportunities-{day}-v1"
+    key = f"open-opportunities-{day}-v2"
     existing = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
     if existing:
         return {"status": "already_checked", "previous_status": existing.status,
@@ -179,6 +217,9 @@ def run_open_opportunity_scan(db: Session, *, queries: int = 3) -> dict:
 
     scanned = considered = added = 0
     failures = []
+    rejected = {"unreachable": 0, "quote_not_on_page": 0,
+                "not_purchase_request": 0, "expired": 0,
+                "already_known": 0, "too_weak": 0}
     try:
         count = min(max(int(queries), 1), 3)
         for i in range(count):
@@ -195,24 +236,30 @@ def run_open_opportunity_scan(db: Session, *, queries: int = 3) -> dict:
                 proposed = str(item.get("url") or "").strip()
                 url, page = _get_verified_page(proposed)
                 if not url or not page:
+                    rejected["unreachable"] += 1
                     continue
                 evidence = re.sub(r"\s+", " ", str(item.get("evidence") or "")).strip()
                 # Require a genuine quote from the fetched source, not generated claims.
                 if len(evidence) < 20 or evidence.casefold() not in page.casefold():
+                    rejected["quote_not_on_page"] += 1
                     continue
                 if not PRODUCT_RE.search(evidence) or not INTENT_RE.search(evidence):
+                    rejected["not_purchase_request"] += 1
                     continue
                 # Reject sources that refer to concluded or expired tender requests.
                 deadline = _parse_date(str(item.get("deadline") or "").strip())
                 if deadline and deadline.date() < now.date():
+                    rejected["expired"] += 1
                     continue
                 source_id = "openweb:" + hashlib.sha256(url.encode("utf-8")).hexdigest()
                 if db.scalar(select(TenderOpportunity.id).where(TenderOpportunity.source_id == source_id)):
+                    rejected["already_known"] += 1
                     continue
                 title = (str(item.get("title") or "").strip() or "Openbare inkoopvraag")[:500]
                 buyer = str(item.get("buyer") or "").strip()[:220]
                 matched_score, matched = _keyword_score(title, evidence)
                 if matched_score < 8:
+                    rejected["too_weak"] += 1
                     continue
                 analysis = analyze_tender(title, evidence, page[:12000], matched_score, matched)
                 score = max(0, min(int(analysis.get("fit_score") or matched_score), 100))
@@ -246,7 +293,7 @@ def run_open_opportunity_scan(db: Session, *, queries: int = 3) -> dict:
         result = {"status": "complete" if not failures else "partial",
                   "date": day, "queries": scanned,
                   "found": considered, "verified_new": added,
-                  "search_errors": failures, "sent": 0}
+                  "search_errors": failures, "rejections": rejected, "sent": 0}
         task = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
         if task:
             task.status = "complete" if scanned else "error"

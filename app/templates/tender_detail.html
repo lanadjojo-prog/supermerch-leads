@@ -6,11 +6,25 @@
     <h1>{{ tender.title }}</h1>
     <p>{{ tender.buyer or 'Opdrachtgever nog niet uit feed gehaald' }}</p>
   </div>
-  <div class="score big">{{ tender.ai_score }}</div>
+  {% if admin %}<div class="score big">{{ tender.ai_score }}</div>{% endif %}
 </section>
 
 {% if message %}<div class="notice">{{ message }}</div>{% endif %}
 
+{% if not admin %}
+<section class="panel">
+  <h2>Openbare aanvraag</h2>
+  <dl>
+    <dt>Opdrachtgever</dt><dd>{{ tender.buyer or '—' }}</dd>
+    <dt>Deadline</dt><dd>{{ tender.deadline.strftime('%d-%m-%Y') if tender.deadline else 'Niet vermeld' }}</dd>
+    <dt>Bron</dt><dd>{{ 'Web / opdrachtgever' if tender.source == 'open_web' else 'TenderNed' }}</dd>
+  </dl>
+  {% if tender.source_url %}
+    <p><a class="button ghost small" href="{{ tender.source_url }}" target="_blank" rel="noopener noreferrer">Bekijk de officiële aanvraag</a></p>
+  {% endif %}
+  <p>Controleer de actuele voorwaarden en inschrijfroute op de oorspronkelijke bronpagina.</p>
+</section>
+{% else %}
 <div class="grid2">
   <section class="panel">
     <h2>AI-analyse</h2>
@@ -97,4 +111,5 @@ Premium custom apparel & merchandise
   <h2>Brontekst</h2>
   <div class="outreach tender-source">{{ tender.raw_text or tender.description }}</div>
 </section>
+{% endif %}
 {% endblock %}

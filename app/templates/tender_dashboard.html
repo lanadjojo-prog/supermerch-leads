@@ -4,9 +4,9 @@
   <div>
     <div class="eyebrow">SUPERMERCH · TENDER RADAR</div>
     <h1>Aanbestedingskansen</h1>
-    <p>Breed gescande TenderNed-opdrachten die mogelijk passen bij het volledige SuperMerch-assortiment. AI rangschikt ze op product-fit en commerciële haalbaarheid.</p>
+    <p>Zoekt automatisch naar openbare offerteaanvragen, inkoopvragen en aanbestedingen bij organisaties en op TenderNed. Alleen kansen met een controleerbare bron komen in het overzicht.</p>
   </div>
-  <form method="post" action="/tenders/scan"><button class="button" type="submit">Scan TenderNed nu</button></form>
+  <form method="post" action="/tenders/scan"><button class="button" type="submit">Zoek nieuwe kansen</button></form>
 </section>
 
 {% if message %}<div class="notice">{{ message }}</div>{% endif %}
@@ -31,7 +31,7 @@
 
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Score</th><th>Opdracht</th><th>Opdrachtgever</th><th>Deadline</th><th>Status</th></tr></thead>
+      <thead><tr><th>Score</th><th>Opdracht</th><th>Opdrachtgever</th><th>Bron</th><th>Deadline</th><th>Status</th></tr></thead>
       <tbody>
       {% for tender in opportunities %}
         <tr>
@@ -41,11 +41,12 @@
             <small>{{ (tender.why_fit or tender.ai_summary or tender.description)[:180] }}</small>
           </td>
           <td>{{ tender.buyer or '—' }}</td>
+          <td>{{ 'Web / opdrachtgever' if tender.source == 'open_web' else 'TenderNed' }}</td>
           <td>{{ tender.deadline.strftime('%d-%m-%Y') if tender.deadline else '—' }}</td>
           <td><span class="badge {{ tender.status }}">{{ tender.status }}</span></td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="empty">Nog geen kansen. Start de eerste TenderNed-scan.</td></tr>
+        <tr><td colspan="6" class="empty">Nog geen kansen. Start een zoekronde.</td></tr>
       {% endfor %}
       </tbody>
     </table>

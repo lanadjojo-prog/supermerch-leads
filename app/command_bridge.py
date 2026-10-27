@@ -57,7 +57,78 @@ def process_startup_command() -> None:
         action = command["action"]
         payload = command.get("payload") or {}
 
-        if action == "run_daily_drafts":
+        if action == "fill_both_draft_queues":
+            # User-requested one-time catch-up, strictly review-only.
+            # Built-in database reservations and 30/day caps are never bypassed.
+            import time
+            from sqlalchemy import func
+            from .config import settings
+            from .services.daily_engine import run_daily_lead_engine
+            from .services.draft_pipeline import _today_utc_bounds, _today_draft_count
+            from .superfris_leads import run_superfris_catchup_pass, superfris_stats
+            if settings.automated_outreach_enabled:
+                raise RuntimeError("Catch-up refuses automated sending")
+            goal = max(1, min(int(payload.get("per_mailbox", 30)), 30))
+            max_passes = max(1, min(int(payload.get("max_passes", 16)), 20))
+            deadline = time.monotonic() + 22 * 60
+            progress = []
+            for index in range(max_passes):
+                start, end, day = _today_utc_bounds()
+                zoho_reserved = _today_draft_count(db, start, end)
+                zoho_saved = int(db.scalar(select(func.count(ChatCommand.id)).where(
+                    ChatCommand.action == "zoho_draft",
+                    ChatCommand.status == "complete",
+                    ChatCommand.created_at >= start,
+                    ChatCommand.created_at < end,
+                )) or 0)
+                sf = superfris_stats(db)
+                if (zoho_saved >= goal and sf["saved_today"] >= goal
+                        or time.monotonic() >= deadline):
+                    break
+                z_result = {"status": "goal_or_cap_reached"}
+                s_result = {"status": "goal_or_cap_reached"}
+                if zoho_reserved < goal and zoho_saved < goal:
+                    z_result = run_daily_lead_engine(db)
+                if sf["attempts_today"] < goal and sf["saved_today"] < goal:
+                    s_result = run_superfris_catchup_pass(db, index + 1)
+                item = {"pass": index + 1, "zoho": z_result,
+                        "superfris": s_result}
+                progress.append(item)
+                logger.warning(
+                    "FILL_QUEUE_PROGRESS pass=%s zoho_new=%s zoho_reserved=%s "
+                    "strato_new=%s strato_attempts=%s",
+                    index + 1, z_result.get("zoho_drafts_created", 0),
+                    z_result.get("zoho_drafts_reserved_today", zoho_reserved),
+                    s_result.get("drafts_created", 0),
+                    s_result.get("draft_attempts_today", sf["attempts_today"]),
+                )
+                row.result = json.dumps(item, ensure_ascii=False)[:5000]
+                db.commit()
+                if (z_result.get("status") == "already_running"
+                        and s_result.get("status") == "already_running"):
+                    time.sleep(10)
+            start, end, day = _today_utc_bounds()
+            zoho_saved = int(db.scalar(select(func.count(ChatCommand.id)).where(
+                ChatCommand.action == "zoho_draft",
+                ChatCommand.status == "complete",
+                ChatCommand.created_at >= start,
+                ChatCommand.created_at < end,
+            )) or 0)
+            sf = superfris_stats(db)
+            result = {
+                "status": "target_reached" if zoho_saved >= goal
+                          and sf["saved_today"] >= goal else "partial",
+                "date": day, "target_each": goal,
+                "zoho_saved_today": zoho_saved,
+                "zoho_attempts_today": _today_draft_count(db, start, end),
+                "strato_saved_today": sf["saved_today"],
+                "strato_attempts_today": sf["attempts_today"],
+                "passes": len(progress), "sent": 0,
+            }
+            row.result = json.dumps(result, ensure_ascii=False)
+            logger.warning("FILL_QUEUE_RESULT %s", result)
+
+        elif action == "run_daily_drafts":
             # Explicit one-off recovery command; it is never a send action.
             from .config import settings
             from .services.daily_engine import run_daily_lead_engine

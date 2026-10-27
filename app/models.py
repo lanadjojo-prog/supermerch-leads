@@ -195,3 +195,15 @@ class InstagramLike(Base):
     status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
     error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class InstagramScanAttempt(Base):
+    """Prevents repeatedly scanning the same company site when it has no IG link."""
+    __tablename__ = "instagram_scan_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(
+        ForeignKey("leads.id"), unique=True, index=True, nullable=False
+    )
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    found: Mapped[int] = mapped_column(Integer, default=0)

@@ -159,11 +159,37 @@ def _email_evidence(page_url: str, page_html: str) -> list[dict]:
         out.append({"email":email,"url":page_url,"context":context[:900],"explicit_supplier_context":explicit,"departmental":departmental})
     return out
 
-def _find_contact(buyer: str, raw: str) -> dict:
+def _find_contact(buyer: str, raw: str, official_request_url: str = "") -> dict:
+    # A public buyer's actual request and its official contact/inkoop pages
+    # outrank search snippets and generic addresses. Never infer an address.
+    evidence=[]
+    origin_host=(urlparse(official_request_url).hostname or "").lower().removeprefix("www.")
+    if official_request_url and origin_host:
+        for url,body in _page_candidates(official_request_url):
+            host=(urlparse(url).hostname or "").lower().removeprefix("www.")
+            if host != origin_host:
+                continue
+            evidence.extend(_email_evidence(url,body))
+        if evidence:
+            evidence.sort(key=lambda x:(x["explicit_supplier_context"],x["departmental"]), reverse=True)
+            best=evidence[0]
+            # Seeing an inkoop@ address is NOT by itself an invitation to
+            # email a tender response. Only an explicit instruction to send
+            # an offer by mail makes this a permitted candidate.
+            text=(best.get("context") or "").lower()
+            invitation=bool(re.search(
+                r"(?:stuur|mail|zend|verstuur|dien).{0,100}(?:offerte|aanbieding|voorstel).{0,100}(?:e-?mail|mail|naar)"
+                r"|(?:offerte|aanbieding|voorstel).{0,90}(?:per mail|per e-?mail)",
+                text, re.I,
+            ))
+            eligible=bool(invitation and best["explicit_supplier_context"])
+            return {**best,"eligible":eligible,
+                    "route":"email_allowed" if eligible else "review_required"}
     raw_emails=_extract_emails(raw)
     if raw_emails:
-        return {"email":raw_emails[0],"url":"","context":"E-mailadres staat in de openbare aanbestedingsdata.","eligible":False,"route":"review_required"}
-    evidence=[]
+        return {"email":raw_emails[0],"url":"",
+                "context":"E-mailadres staat in de openbare bron; kanaal nog beoordelen.",
+                "eligible":False,"route":"review_required"}
     for site in _search_official_sites(buyer):
         for url,body in _page_candidates(site):
             evidence.extend(_email_evidence(url,body))
@@ -171,8 +197,9 @@ def _find_contact(buyer: str, raw: str) -> dict:
         return {"email":"","url":"","context":"Geen geschikt openbaar contactadres gevonden.","eligible":False,"route":"contact_missing"}
     evidence.sort(key=lambda x:(x["explicit_supplier_context"],x["departmental"]), reverse=True)
     best=evidence[0]
-    eligible=bool(best["explicit_supplier_context"] and best["departmental"])
-    return {**best,"eligible":eligible,"route":"email_allowed" if eligible else "review_required"}
+    # A supplier contact may be appropriate for relationship-building, but
+    # the existence of an address alone is not authorization to cold email.
+    return {**best,"eligible":False,"route":"review_required"}
 
 def _request_summary(tender: TenderOpportunity) -> str:
     return (tender.products or tender.ai_summary or tender.title or "").strip()[:700]
@@ -213,7 +240,10 @@ def prepare_tender_outreach(db: Session, tender: TenderOpportunity, force: bool=
     restricted,restriction_reason=_restricted(raw)
     contact={"email":"","url":"","context":"","eligible":False,"route":"tenderned" if restricted else "contact_missing"}
     if not restricted:
-        contact=_find_contact(tender.buyer or "", raw)
+        contact=_find_contact(
+            tender.buyer or "", raw,
+            official_request_url=tender.source_url if tender.source == "open_web" else "",
+        )
     need,body=_draft_with_ai(tender)
     row=existing or TenderOutreach(opportunity_id=tender.id)
     row.contact_email=(contact.get("email") or None)

@@ -57,6 +57,23 @@ INTENT_RE = re.compile(
     r"aanbieding(?:en)?\s+indienen)\b", re.I
 )
 
+# Fallback when a model paraphrases rather than literally quotes the source.
+# Require an unambiguous PUBLIC PROCUREMENT signal near the merchandise item.
+STRONG_REQUEST_RE = re.compile(
+    r"\b(?:aanbesteding(?:en)?|marktconsultatie|offerteaanvraag|"
+    r"offerteverzoek|inkoopopdracht|leveranciers?\s+gezocht|"
+    r"call for tenders?|request for proposals?|rfp)\b", re.I,
+)
+
+def _request_passage_from_page(page: str) -> str:
+    for match in STRONG_REQUEST_RE.finditer(page):
+        start = max(0, match.start() - 260)
+        end = min(len(page), match.end() + 300)
+        excerpt = page[start:end]
+        if PRODUCT_RE.search(excerpt):
+            return excerpt[:600].strip()
+    return ""
+
 def _safe_buyer_url(url: str) -> str:
     parsed = public_url(url)
     if not parsed:
@@ -202,7 +219,7 @@ def run_open_opportunity_scan(db: Session, *, queries: int = 3) -> dict:
     """Day-scoped, idempotent sourced discovery into the existing Tender board."""
     now = datetime.now(timezone.utc).astimezone(settings.local_timezone)
     day = now.date().isoformat()
-    key = f"open-opportunities-{day}-v2"
+    key = f"open-opportunities-{day}-v3"
     existing = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
     if existing:
         return {"status": "already_checked", "previous_status": existing.status,
@@ -240,9 +257,15 @@ def run_open_opportunity_scan(db: Session, *, queries: int = 3) -> dict:
                     continue
                 evidence = re.sub(r"\s+", " ", str(item.get("evidence") or "")).strip()
                 # Require a genuine quote from the fetched source, not generated claims.
-                if len(evidence) < 20 or evidence.casefold() not in page.casefold():
-                    rejected["quote_not_on_page"] += 1
-                    continue
+                quote_matches = len(evidence) >= 20 and evidence.casefold() in page.casefold()
+                if not quote_matches:
+                    # Never trust a paraphrased model quote. Instead select
+                    # source words from the actual page around a strong call
+                    # for supplier offers. Anything weaker remains rejected.
+                    evidence = _request_passage_from_page(page)
+                    if not evidence:
+                        rejected["quote_not_on_page"] += 1
+                        continue
                 if not PRODUCT_RE.search(evidence) or not INTENT_RE.search(evidence):
                     rejected["not_purchase_request"] += 1
                     continue

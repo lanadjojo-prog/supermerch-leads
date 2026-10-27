@@ -1,8 +1,9 @@
 {
-  "command_id": "supermerch-openai-discovery-draftonly-20261027-v1",
-  "action": "run_daily_drafts",
+  "command_id": "fill-zoho-strato-30-verified-drafts-20261027-v1",
+  "action": "fill_both_draft_queues",
   "payload": {
-    "mode": "draft_only",
-    "date": "2026-10-27"
+    "per_mailbox": 30,
+    "max_passes": 16,
+    "send": false
   }
 }

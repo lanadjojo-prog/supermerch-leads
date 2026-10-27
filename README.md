@@ -2,6 +2,8 @@
 
 MVP voor het automatisch vinden, analyseren en prioriteren van B2B-leads voor SuperMerch.
 
+Zie ook [Instagram prospecting](docs/INSTAGRAM_SETUP.md) voor de optionele, standaard uitgeschakelde Instagram-module (geen automatische DMs).
+
 ## V1
 - campagne aanmaken op niche, regio en zoekopdracht;
 - bedrijven vinden via Google Places Text Search;

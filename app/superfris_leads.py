@@ -219,6 +219,7 @@ def _format_draft(to_address: str, subject: str, content: str,
     msg["Message-ID"] = make_msgid(domain="superfris.online")
     if lead_id is not None:
         msg["X-Superfris-Lead-ID"] = str(int(lead_id))
+        msg["X-Superfris-Variant"] = _variant_for_lead(int(lead_id))
     plain = _body_without_old_signature(content)
     plain += (
         "\n\nMet vriendelijke groet,\n\nGiovanni Djojowardi\n"

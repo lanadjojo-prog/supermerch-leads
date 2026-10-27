@@ -502,6 +502,71 @@ def run_superfris_pass(db: Session) -> dict:
         _guard.release()
 
 
+
+def run_superfris_catchup_pass(db: Session, sequence: int) -> dict:
+    """One safe extra research/draft pass for a user-requested catch-up.
+
+    Independently reserved sequence keys allow several attempts in one hour,
+    while the shared process guard, prospect deduplication, per-lead APPEND
+    reservation and 30/day ceiling apply identically to scheduled passes.
+    Never sends SMTP mail.
+    """
+    if os.getenv("SUPERFRIS_ENABLED", "false").lower() not in ("1", "true", "yes", "on"):
+        return {"status": "disabled", "drafts_created": 0, "sent": 0}
+    if not os.getenv("SUPERFRIS_STRATO_PASSWORD", ""):
+        return {"status": "strato_mail_not_configured", "drafts_created": 0, "sent": 0}
+    local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+    if not 9 <= local.hour < 19:
+        return {"status": "outside_window", "drafts_created": 0, "sent": 0}
+    attempts = _draft_attempts_today(db)
+    if attempts >= MAX_DRAFTS_PER_DAY:
+        return {"status": "daily_cap_reached", "draft_attempts_today": attempts,
+                "drafts_created": 0, "sent": 0}
+    if not _guard.acquire(blocking=False):
+        return {"status": "already_running", "drafts_created": 0, "sent": 0}
+    try:
+        key = f"superfris-user-catchup-{local.date().isoformat()}-{int(sequence):03d}"
+        if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == key)):
+            return {"status": "slot_already_claimed", "drafts_created": 0, "sent": 0}
+        record = ChatCommand(command_id=key, action="superfris_catchup", status="running")
+        db.add(record)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return {"status": "slot_already_claimed", "drafts_created": 0, "sent": 0}
+
+        # Drain previously verified, not-yet-drafted prospects first.
+        drafted = _make_drafts(db)
+        created = 0
+        error = None
+        if _draft_attempts_today(db) < MAX_DRAFTS_PER_DAY:
+            try:
+                # Distinct reproducible search rotation for each catch-up slot.
+                created = _discover(db, local.date().isoformat(),
+                                    slot=local.hour + int(sequence) * 7)
+            except Exception as exc:
+                db.rollback()
+                error = str(exc) if str(exc).startswith(("openai_discovery_", "open_data_")) else type(exc).__name__
+                logger.warning("Superfris catch-up discovery error: %s", error)
+            drafted += _make_drafts(db)
+
+        record = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key))
+        if record:
+            record.status = "error" if error else "complete"
+            record.result = (error or f"created={created}; drafted={drafted}; sent=0")
+            record.finished_at = datetime.utcnow()
+            db.commit()
+        result = {"status": "discovery_blocked" if error else "complete",
+                  "new_prospects": created, "drafts_created": drafted,
+                  "draft_attempts_today": _draft_attempts_today(db),
+                  "discovery_error": error, "sent": 0}
+        logger.warning("Superfris catch-up pass %s: %s", sequence, result)
+        return result
+    finally:
+        _guard.release()
+
+
 def superfris_stats(db: Session) -> dict:
     start, end, _ = _today_bounds()
     saved_today = int(db.scalar(select(func.count(SuperfrisDraftAttempt.id)).where(

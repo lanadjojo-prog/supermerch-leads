@@ -9,7 +9,7 @@ import logging
 import random
 import re
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import ChatCommand, InstagramLike, InstagramProspect, Lead
+from ..models import ChatCommand, InstagramLike, InstagramProspect, InstagramScanAttempt, Lead
 
 logger = logging.getLogger(__name__)
 GRAPH_ROOT = "https://graph.facebook.com"
@@ -63,26 +63,41 @@ def username_from_company_homepage(html: str) -> str | None:
 def _fetch_public_handle(url: str) -> str | None:
     if not url.startswith(("http://", "https://")):
         return None
-    # Existing lead website may be unsafe or stale; do not follow to an arbitrary site.
+    # Never follow redirects to a different host or non-HTTP protocol.
+    origin = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    if not origin or origin == "localhost" or "." not in origin:
+        return None
     try:
-        with httpx.Client(timeout=9, follow_redirects=False) as client:
-            resp = client.get(
-                url, headers={"User-Agent": "SuperMerch-LeadResearch/1.0 (+https://supermerch.nl)"}
-            )
-        if resp.status_code != 200 or "text/html" not in resp.headers.get("content-type", ""):
-            return None
-        return username_from_company_homepage(resp.text)
+        with httpx.Client(timeout=7, follow_redirects=False) as client:
+            current = url
+            for _ in range(3):
+                resp = client.get(
+                    current, headers={"User-Agent": "SuperMerch-LeadResearch/1.0 (+https://supermerch.nl)"}
+                )
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    next_url = urljoin(current, resp.headers.get("location", ""))
+                    next_host = (urlparse(next_url).hostname or "").lower().removeprefix("www.")
+                    if urlparse(next_url).scheme not in ("https", "http") or next_host != origin:
+                        return None
+                    current = next_url
+                    continue
+                if resp.status_code != 200 or "text/html" not in resp.headers.get("content-type", ""):
+                    return None
+                return username_from_company_homepage(resp.text)
     except httpx.HTTPError:
         return None
+    return None
 
 
-def discover_prospects(db: Session, limit: int = 25) -> dict:
+def discover_prospects(db: Session, limit: int = 12) -> dict:
     """Reuse already qualified B2B leads; scan their public homepages once."""
     leads = db.scalars(
         select(Lead)
         .outerjoin(InstagramProspect, InstagramProspect.lead_id == Lead.id)
+        .outerjoin(InstagramScanAttempt, InstagramScanAttempt.lead_id == Lead.id)
         .where(
             InstagramProspect.id.is_(None),
+            (InstagramScanAttempt.id.is_(None) | (InstagramScanAttempt.checked_at < datetime.utcnow() - timedelta(days=30))),
             Lead.score >= 50,
             Lead.status.in_(("ready_for_review", "approved", "contacted", "possible")),
         )
@@ -92,17 +107,22 @@ def discover_prospects(db: Session, limit: int = 25) -> dict:
     found = 0
     for lead in leads:
         name = _fetch_public_handle(lead.website)
-        if not name:
-            continue
-        db.add(InstagramProspect(
-            lead_id=lead.id,
-            username=name,
-            profile_url=f"https://www.instagram.com/{name}/",
-            status="discovered",
-        ))
+        attempt = db.scalar(select(InstagramScanAttempt).where(InstagramScanAttempt.lead_id == lead.id))
+        if attempt is None:
+            attempt = InstagramScanAttempt(lead_id=lead.id)
+            db.add(attempt)
+        attempt.checked_at = datetime.utcnow()
+        attempt.found = int(bool(name))
+        if name:
+            db.add(InstagramProspect(
+                lead_id=lead.id,
+                username=name,
+                profile_url=f"https://www.instagram.com/{name}/",
+                status="discovered",
+            ))
         try:
             db.commit()
-            found += 1
+            found += int(bool(name))
         except IntegrityError:
             db.rollback()
     return {"checked": len(leads), "found": found}
@@ -144,7 +164,8 @@ def fetch_business_media(username: str) -> list[dict]:
         "{username,media.limit(12){id,caption,permalink,timestamp,media_type}}"
     )
     data = _request("GET", settings.instagram_ig_user_id, params={"fields": fields})
-    return (data.get("business_discovery") or {}).get("media", {}).get("data", [])
+    discovery = data.get("business_discovery") or {}
+    return (discovery.get("media") or {}).get("data") or []
 
 
 def _is_suitable(media: dict, now: datetime) -> bool:

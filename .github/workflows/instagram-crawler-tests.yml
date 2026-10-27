@@ -21,6 +21,8 @@ jobs:
           pip install -r requirements.txt pytest
       - name: Syntax validation
         run: python -m compileall -q app
+      - name: Application import smoke test
+        run: python -c "from app.main import app; print(app.title)"
       - name: Run isolated Instagram tests
         env:
           DATABASE_URL: "sqlite:///:memory:"

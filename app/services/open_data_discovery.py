@@ -190,7 +190,15 @@ def discover_open_data(query: str, region: str, limit: int = 12, *,
 
 def discover_businesses(query: str, region: str, limit: int = 12, *,
                         purpose: str = "merch", niche: str = "") -> list[DiscoveredCompany]:
-    """Select no-key discovery by default; optionally use paid web discovery."""
+    """Use sourced OpenAI web search for SuperMerch, never silently use Overpass.
+
+    Superfris remains on its previously configured provider. A missing API key
+    is a visible failure, not a falsely successful zero-lead run.
+    """
+    if purpose == "merch":
+        if not settings.openai_api_key.strip():
+            raise DiscoveryError("openai_discovery_api_key_missing")
+        return discover_openai(query, region, limit, purpose="merch")
     if settings.free_mode:
         return discover_open_data(query, region, limit, purpose=purpose, niche=niche)
     return discover_openai(query, region, limit, purpose=purpose)

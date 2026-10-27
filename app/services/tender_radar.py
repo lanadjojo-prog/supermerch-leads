@@ -606,6 +606,12 @@ def run_tender_scan_background() -> None:
         outreach = prepare_tender_outreach_batch(db)
         logger.warning("Tender outreach after scan: %s", outreach)
     finally:
+        # Same lead-machine job, now also checks public sourcing outside TenderNed.
+        try:
+            from .open_opportunities import scan_open_opportunities_if_due
+            logger.warning("External procurement discovery: %s", scan_open_opportunities_if_due(db))
+        except Exception:
+            logger.exception("External procurement discovery failed")
         db.close()
 
 def run_tender_scan_if_due_background() -> None:
@@ -643,4 +649,11 @@ def run_tender_scan_if_due_background() -> None:
     except Exception:
         logger.exception("Scheduled Tender scan failed")
     finally:
+        # Keep sourcing opportunistic public requests even if TenderNed is down
+        # or the latest official batch was already recently checked.
+        try:
+            from .open_opportunities import scan_open_opportunities_if_due
+            logger.warning("External procurement discovery: %s", scan_open_opportunities_if_due(db))
+        except Exception:
+            logger.exception("External procurement discovery failed")
         db.close()

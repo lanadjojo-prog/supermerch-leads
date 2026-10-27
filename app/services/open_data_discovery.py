@@ -195,10 +195,10 @@ def discover_businesses(query: str, region: str, limit: int = 12, *,
     Superfris remains on its previously configured provider. A missing API key
     is a visible failure, not a falsely successful zero-lead run.
     """
-    if purpose == "merch":
+    if purpose in {"merch", "design"}:
+        # Both brands now use independently source-checked OpenAI web search.
+        # Never silently fall back to overloaded OSM/Overpass sources.
         if not settings.openai_api_key.strip():
             raise DiscoveryError("openai_discovery_api_key_missing")
-        return discover_openai(query, region, limit, purpose="merch")
-    if settings.free_mode:
-        return discover_open_data(query, region, limit, purpose=purpose, niche=niche)
-    return discover_openai(query, region, limit, purpose=purpose)
+        return discover_openai(query, region, limit, purpose=purpose)
+    raise ValueError("Unsupported discovery purpose")

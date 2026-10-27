@@ -26,6 +26,7 @@ RELEVANT_HINTS = (
 class CrawlResult:
     pages: list[tuple[str, str]] = field(default_factory=list)
     emails: list[tuple[str, str]] = field(default_factory=list)
+    instagram_profiles: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def combined_text(self) -> str:
@@ -115,6 +116,10 @@ def crawl_website(start_url: str) -> CrawlResult:
                                 result.emails.append(pair)
                     continue
                 href = urljoin(str(response.url), original_href.split("#")[0])
+                from .instagram_links import instagram_username
+                username = instagram_username(href)
+                if username and (username, str(response.url)) not in result.instagram_profiles:
+                    result.instagram_profiles.append((username, str(response.url)))
                 if _host(start_url) != _host(href):
                     continue
                 path = urlparse(href).path.lower().strip("/")

@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from .auth import require_basic_auth
 from .chat_api import router as chat_api_router
 from .tender_routes import router as tender_router
+from .instagram_routes import router as instagram_router
+from .services.instagram_engine import run_background as run_instagram_background, status_summary as instagram_status_summary
 from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
@@ -136,6 +138,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(chat_api_router)
 app.include_router(tender_router)
+app.include_router(instagram_router)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -184,6 +187,7 @@ def _run_superfris_background():
 
 @app.get("/health")
 def health(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_instagram_background)
     # Every health hit wakes Render and immediately lets the engines continue.
     background_tasks.add_task(_run_current_automation_background)
     background_tasks.add_task(run_tender_scan_if_due_background)
@@ -214,7 +218,7 @@ def health(background_tasks: BackgroundTasks):
     finally:
         db.close()
 
-    return {"ok": True, "automation_triggered": True, "tender_radar": tender}
+    return {"ok": True, "automation_triggered": True, "instagram": instagram_status_summary(), "tender_radar": tender}
 
 
 class QuoteNotification(BaseModel):

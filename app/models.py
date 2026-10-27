@@ -165,3 +165,24 @@ class TenderScanRun(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class InstagramProspect(Base):
+    __tablename__ = "instagram_prospects"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(30), unique=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id"), index=True)
+    source_url: Mapped[str] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(40), default="discovered")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class InstagramAction(Base):
+    __tablename__ = "instagram_actions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    media_id: Mapped[str] = mapped_column(String(100), unique=True)
+    username: Mapped[str] = mapped_column(String(30))
+    permalink: Mapped[str] = mapped_column(String(500))
+    day_slot: Mapped[str] = mapped_column(String(80), unique=True)
+    status: Mapped[str] = mapped_column(String(40), default="reserved")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

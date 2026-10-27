@@ -139,4 +139,9 @@ def run_automation_scheduler(stop_event: threading.Event) -> None:
             logger.exception("In-process automation pass failed")
         finally:
             db.close()
+        try:
+            from .instagram_engine import run_background
+            run_background()
+        except Exception:
+            logger.exception("Instagram scheduler failed")
         stop_event.wait(300)

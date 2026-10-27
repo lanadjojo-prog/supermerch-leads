@@ -61,3 +61,53 @@ automatically sent: set AUTOMATED_OUTREACH_ENABLED=false.
 - AUTOMATION_ENABLED controls research schedules. SUPERFRIS_ENABLED=true and
   SUPERFRIS_STRATO_PASSWORD are needed for STRATO IMAP draft saving.
 - Public /health can wake both scheduled workers; no secret is exposed.
+
+## Instagram prospecting
+
+`/instagram/` shows discovered accounts, source websites, API action outcomes and
+recent runs. Discovery reuses the existing public-site crawler for up to five
+qualified SuperMerch leads per hour, between 09:00 and 19:00 Europe/Amsterdam.
+It finds explicit profile links on company websites; it does not scrape the
+Instagram feed or guess usernames. Discovery requires existing qualified leads.
+The existing health wake and in-process scheduler trigger the worker; unique DB
+claims suppress duplicate runs across processes. Failed site scans are retained
+for operator inspection, not retried in a tight loop.
+
+Set these variables in the service's secret environment (never in Git):
+
+- `INSTAGRAM_CRAWLER_ENABLED=true`: enable account discovery.
+- `INSTAGRAM_USER_ID`: the numeric Instagram professional-account ID.
+- `INSTAGRAM_GRAPH_VERSION`: the supported Graph API version selected for the Meta app.
+- `INSTAGRAM_ACCESS_TOKEN`: a Meta access token with Business Discovery access and
+  `instagram_basic` / `instagram_manage_engagement`, plus any required Facebook
+  Login permissions. Configure the app/account with Meta before enabling likes.
+- `INSTAGRAM_LIKES_ENABLED=true`: enable API likes after configuring and verifying
+  the Meta integration. Browser login does not provide these API credentials.
+
+The worker verifies the connected username is **supermerch.nl** before liking.
+It processes at most one account per hour, two public recent posts per account,
+and ten attempts per Dutch calendar day. Posts older than 30 days are skipped.
+Professional-account Business Discovery limits apply; unsupported accounts may
+cause the API to reject a request. There are no DMs, follows, browser-cookie
+exports, private endpoints or anti-bot bypasses.
+
+Each post and daily slot is reserved durably BEFORE the API request. Crashed or
+unconfirmed requests consume budget and are not automatically retried. Any API
+failure pauses further engagement via `chat_commands.command_id =
+instagram-engagement-paused`. An operator must resolve the cause and explicitly
+remove this pause record to resume. Never remove action reservations to retry an
+uncertain request without checking its result. Account processing claims are
+also permanent to prevent repeated engagement after restarts.
+
+Limitations: candidate qualification inherits the lead score, not a review of
+individual post text. An automatic like is not evidence of purchase intent.
+The free Render service may sleep; scheduled hourly wake-ups are best-effort,
+not a guaranteed execution time. No new paid services are introduced.
+
+API references:
+- https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-user/user-likes
+- https://developers.facebook.com/blog/post/2026/04/22/instagram-api-updates-for-partnerships-metrics-collaboration-and-engagement/
+
+Validation: `python -m pytest tests/test_instagram_engine.py -q`. Live Meta calls
+must still be tested after account permission/configuration; unit tests use a
+fake API and do not claim access to the production Instagram account.

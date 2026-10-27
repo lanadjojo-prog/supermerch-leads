@@ -49,7 +49,7 @@ def tender_dashboard(request: Request, status: str | None = None, db: Session = 
 @router.post("/scan", dependencies=[Depends(auth)])
 def scan_tenders(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_tender_scan_background)
-    return RedirectResponse("/tenders/?message=TenderNed-scan gestart. Vernieuw deze pagina over een moment.", status_code=303)
+    return RedirectResponse("/tenders/?message=Zoekronde gestart: TenderNed en openbare inkoopvragen buiten TenderNed. Vernieuw deze pagina over een moment.", status_code=303)
 
 @router.get("/{opportunity_id}", response_class=HTMLResponse, dependencies=[Depends(auth)])
 def tender_detail(request: Request, opportunity_id: int, db: Session = Depends(get_db)):

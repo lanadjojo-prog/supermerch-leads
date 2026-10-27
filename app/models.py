@@ -165,3 +165,45 @@ class TenderScanRun(Base):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class InstagramProspect(Base):
+    """Verified official Instagram link found on an existing company website."""
+    __tablename__ = "instagram_prospects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(
+        ForeignKey("leads.id"), unique=True, index=True, nullable=False
+    )
+    username: Mapped[str] = mapped_column(String(80), index=True)
+    profile_url: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(40), default="discovered", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class InstagramLike(Base):
+    """Idempotent record: never like the same media twice from this lead engine."""
+    __tablename__ = "instagram_likes"
+    __table_args__ = (UniqueConstraint("media_id", name="uq_instagram_media_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prospect_id: Mapped[int] = mapped_column(
+        ForeignKey("instagram_prospects.id"), index=True, nullable=False
+    )
+    media_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    media_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class InstagramScanAttempt(Base):
+    """Prevents repeatedly scanning the same company site when it has no IG link."""
+    __tablename__ = "instagram_scan_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(
+        ForeignKey("leads.id"), unique=True, index=True, nullable=False
+    )
+    checked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    found: Mapped[int] = mapped_column(Integer, default=0)

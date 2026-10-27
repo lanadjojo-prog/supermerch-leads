@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+ <div>
+  <p class="eyebrow">SUPERMERCH · INSTAGRAM PROSPECTING</p>
+  <h1>Nieuwe klanten vinden via Instagram</h1>
+  <p>Alleen zakelijke accounts die vanaf de officiële bedrijfswebsite gelinkt zijn. Geen automatische DM's of volgbot.</p>
+ </div>
+ <form method="post" action="/instagram/scan"><button class="button" type="submit">Start nieuwe Instagram-ronde</button></form>
+</section>
+{% if request.query_params.get("started") %}<div class="notice ok">De nieuwe ronde is gestart. Vernieuw deze pagina voor nieuwe resultaten.</div>{% endif %}
+<div class="stats">
+ <div class="stat"><span>Gevonden accounts</span><strong>{{ status.prospects }}</strong></div>
+ <div class="stat"><span>Likes vandaag</span><strong>{{ status.likes_today }} / {{ status.daily_like_limit }}</strong></div>
+ <div class="stat"><span>Meta-koppeling</span><strong>{{ "Actief" if status.connected else "Nog nodig" }}</strong></div>
+ <div class="stat"><span>Automatisch liken</span><strong>{{ "Actief" if status.likes_enabled else "Uit" }}</strong></div>
+</div>
+{% if not status.likes_enabled %}
+<section class="panel"><p><strong>Veilige modus:</strong> er worden geen likes geplaatst totdat <code>INSTAGRAM_LIKES_ENABLED=true</code> is ingesteld op Render én de Meta-koppeling werkt.</p></section>
+{% endif %}
+<section class="panel">
+ <div class="panel-head"><h2>Gekwalificeerde Instagram-accounts</h2></div>
+ {% if prospects %}<div class="table-wrap"><table>
+ <thead><tr><th>Bedrijf</th><th>Instagram</th><th>Leadscore</th><th>Aanbod</th><th>Status</th></tr></thead>
+ <tbody>{% for prospect, lead in prospects %}
+ <tr><td><a href="/leads/{{ lead.id }}">{{ lead.company_name }}</a></td>
+ <td><a href="{{ prospect.profile_url }}" target="_blank" rel="noopener noreferrer">@{{ prospect.username }}</a></td>
+ <td>{{ lead.score }}</td><td>{{ lead.recommended_offer or "Merchandise in eigen design" }}</td><td>{{ prospect.status }}</td></tr>
+ {% endfor %}</tbody></table></div>
+ {% else %}<div class="empty">Nog geen Instagram-accounts gevonden. Start een ronde om de bestaande leads te controleren.</div>{% endif %}
+</section>
+<section class="panel">
+ <div class="panel-head"><h2>Actielogboek</h2></div>
+ {% if likes %}<div class="table-wrap"><table>
+ <thead><tr><th>Account</th><th>Bericht</th><th>Status</th><th>Tijdstip (UTC)</th></tr></thead>
+ <tbody>{% for like, prospect in likes %}<tr>
+ <td>@{{ prospect.username }}</td><td><a href="{{ like.media_url }}" target="_blank" rel="noopener noreferrer">Bekijk post</a></td>
+ <td>{{ like.status }}</td><td>{{ like.created_at.strftime("%d-%m %H:%M") }}</td>
+ </tr>{% endfor %}</tbody></table></div>
+ {% else %}<div class="empty">Nog geen likes uitgevoerd.</div>{% endif %}
+</section>
+{% endblock %}

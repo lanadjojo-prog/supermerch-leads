@@ -37,6 +37,13 @@ class Settings:
     dropdesk_storage_key: str = os.getenv("DROPDESK_STORAGE_KEY", "")
     discovery_bridge_token: str = os.getenv("DISCOVERY_BRIDGE_TOKEN", "")
     quote_mail_token: str = os.getenv("SUPERMERCH_QUOTE_MAIL_TOKEN", "")
+    # Instagram module: read-only discovery can run without Meta credentials.
+    # No likes are sent until operator deliberately enables the separate toggle.
+    instagram_scan_enabled: bool = os.getenv("INSTAGRAM_SCAN_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    instagram_likes_enabled: bool = os.getenv("INSTAGRAM_LIKES_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    instagram_access_token: str = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+    instagram_ig_user_id: str = os.getenv("INSTAGRAM_IG_USER_ID", "")
+    instagram_graph_version: str = os.getenv("INSTAGRAM_GRAPH_VERSION", "v25.0")
     local_timezone: ZoneInfo = ZoneInfo(os.getenv("LOCAL_TIMEZONE", "Europe/Amsterdam"))
     automation_enabled: bool = os.getenv("AUTOMATION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
     automation_start_hour: int = _int_env("AUTOMATION_START_HOUR", 9)

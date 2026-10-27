@@ -215,6 +215,20 @@ def perform_likes(db: Session) -> dict:
     if not settings.instagram_access_token or not settings.instagram_ig_user_id:
         return {"status": "not_connected", "liked": 0}
 
+    # Unique DB claim protects the daily global cap across Render workers and manual runs.
+    local_day = datetime.now(timezone.utc).astimezone(settings.local_timezone).date()
+    like_batch = ChatCommand(
+        command_id=f"instagram-like-batch-{local_day.isoformat()}",
+        action="instagram_like_batch",
+        status="running",
+    )
+    db.add(like_batch)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return {"status": "already_attempted_today", "liked": 0}
+
     today = _today_likes(db)
     remaining = max(0, 10 - len(today))
     if remaining == 0:
@@ -242,8 +256,10 @@ def perform_likes(db: Session) -> dict:
             logger.warning("Instagram Business Discovery failed for %s (HTTP %s)", prospect.username, exc.status)
             if exc.status in (401, 403, 429, 503):
                 return {"status": "api_paused", "liked": liked, "error": str(exc)}
-            prospect.status = "unsupported"
-            db.commit()
+            if exc.status == 404:
+                prospect.status = "unsupported"
+                db.commit()
+            # HTTP 400 can mean a missing permission. Do not blacklist the account.
             continue
         now = datetime.now(timezone.utc)
         suitable = [m for m in media_list if _is_suitable(m, now)]
@@ -287,6 +303,9 @@ def perform_likes(db: Session) -> dict:
                 break
         if remaining <= 0:
             break
+    like_batch.status = "complete"
+    like_batch.finished_at = datetime.utcnow()
+    db.commit()
     return {"status": "complete", "liked": liked, "already_attempted": skipped}
 
 

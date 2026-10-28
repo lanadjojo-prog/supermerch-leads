@@ -208,12 +208,20 @@ def engage(db, client, now):
                 InstagramProspect.username.in_(preferred),
             ).order_by(InstagramProspect.id).limit(remaining_accounts)
         ).all() if preferred else []
-        ordinary_query = select(InstagramProspect).where(
-            InstagramProspect.status == "discovered")
-        if preferred:
-            ordinary_query = ordinary_query.where(InstagramProspect.username.not_in(preferred))
-        ordinary_prospects = db.scalars(ordinary_query.order_by(
-            InstagramProspect.id).limit(max(0, remaining_accounts - len(preferred_prospects)))).all()
+        # With an imported mailing list pending, do not use up the like
+        # budget on unrelated organically-discovered accounts.
+        priority_pending = db.scalar(select(ChatCommand.id).where(
+            ChatCommand.action == "instagram_priority",
+            ChatCommand.status == "queued"
+        ).limit(1)) is not None
+        ordinary_prospects = []
+        if not priority_pending:
+            ordinary_query = select(InstagramProspect).where(
+                InstagramProspect.status == "discovered")
+            if preferred:
+                ordinary_query = ordinary_query.where(InstagramProspect.username.not_in(preferred))
+            ordinary_prospects = db.scalars(ordinary_query.order_by(
+                InstagramProspect.id).limit(max(0, remaining_accounts - len(preferred_prospects)))).all()
         for prospect in [*preferred_prospects, *ordinary_prospects]:
             if used + count >= DAILY_LIMIT:
                 break

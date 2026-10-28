@@ -209,9 +209,13 @@ def discover_businesses(query: str, region: str, limit: int = 12, *,
     if purpose not in {"merch", "design"}:
         raise ValueError("Unsupported discovery purpose")
     provider = os.getenv("LEADS_DISCOVERY_PROVIDER", "auto").strip().lower()
-    if provider not in {"auto", "openai", "open_data"}:
+    if provider not in {"auto", "openai", "open_data", "chatgpt"}:
         raise ValueError("Invalid LEADS_DISCOVERY_PROVIDER")
 
+    if provider == "chatgpt":
+        # Leads are researched in ChatGPT and ingested with verified source URLs.
+        # Never fabricate companies or call paid APIs from a scheduled Render job.
+        return []
     if provider == "open_data" or (provider == "auto" and not settings.openai_api_key.strip()):
         return discover_open_data(query, region, limit, purpose=purpose, niche=niche)
     try:

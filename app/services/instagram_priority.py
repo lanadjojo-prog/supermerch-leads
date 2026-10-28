@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
 from ..models import Campaign, ChatCommand, InstagramProspect, Lead
@@ -128,13 +128,19 @@ def import_mailing_csv(db, content: bytes):
 
 
 def priority_counts(db):
-    rows = db.scalars(select(ChatCommand).where(ChatCommand.action == "instagram_priority")).all()
+    # Aggregate in SQL: loading 21k+ queue records on every dashboard render
+    # needlessly blocks the service and grows memory usage.
+    counts = dict(db.execute(
+        select(ChatCommand.status, func.count(ChatCommand.id)).where(
+            ChatCommand.action == "instagram_priority"
+        ).group_by(ChatCommand.status)
+    ).all())
     return {
-        "totaal": len(rows),
-        "wacht": sum(r.status == "queued" for r in rows),
-        "gevonden": sum(r.status == "matched" for r in rows),
-        "niet_gevonden": sum(r.status == "not_found" for r in rows),
-        "mislukt": sum(r.status == "failed" for r in rows),
+        "totaal": sum(counts.values()),
+        "wacht": counts.get("queued", 0),
+        "gevonden": counts.get("matched", 0),
+        "niet_gevonden": counts.get("not_found", 0),
+        "mislukt": counts.get("failed", 0),
     }
 
 

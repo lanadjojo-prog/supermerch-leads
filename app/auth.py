@@ -17,7 +17,7 @@ def require_basic_auth(request: Request) -> None:
     if not header.startswith("Basic "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Basic realm=SuperMerch Leads"},
+            headers={"WWW-Authenticate": "Basic realm=\"SuperMerch Leads\", charset=\"UTF-8\""},
         )
     try:
         decoded = base64.b64decode(header.split(" ", 1)[1]).decode("utf-8")
@@ -25,7 +25,7 @@ def require_basic_auth(request: Request) -> None:
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Basic realm=SuperMerch Leads"},
+            headers={"WWW-Authenticate": "Basic realm=\"SuperMerch Leads\", charset=\"UTF-8\""},
         )
 
     if not (
@@ -34,5 +34,5 @@ def require_basic_auth(request: Request) -> None:
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            headers={"WWW-Authenticate": "Basic realm=SuperMerch Leads"},
+            headers={"WWW-Authenticate": "Basic realm=\"SuperMerch Leads\", charset=\"UTF-8\""},
         )

@@ -70,12 +70,29 @@ def pause(db, reason):
 
 
 def paused(db):
-    return db.scalar(select(ChatCommand).where(
-        ChatCommand.command_id == "instagram-engagement-paused")) is not None
+    row = db.scalar(select(ChatCommand).where(
+        ChatCommand.command_id == "instagram-engagement-paused"))
+    if row is None or row.status != "paused":
+        return False
+    # Older releases paused the entire crawler on an inaccessible public target
+    # (Meta code 110). No like was attempted if no unconfirmed action exists.
+    # Recover only this known, proven non-action error; keep all other
+    # authorization, rate-limit, and ambiguous POST failures paused.
+    safe_invalid_target = row.result == "Meta API geweigerd (HTTP 400, code 110)."
+    has_unconfirmed_post = db.scalar(select(InstagramAction.id).where(
+        InstagramAction.status == "unconfirmed").limit(1)) is not None
+    if safe_invalid_target and not has_unconfirmed_post:
+        row.status = "cleared_invalid_target"
+        row.finished_at = datetime.utcnow()
+        db.commit()
+        return False
+    return True
 
 
 class MetaError(RuntimeError):
-    pass
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 class MetaClient:
@@ -96,7 +113,7 @@ class MetaClient:
             # Do not log raw API responses or request URLs (may contain secrets).
             error = data.get("error", {}) if isinstance(data, dict) else {}
             code = error.get("code", "unknown") if isinstance(error, dict) else "unknown"
-            raise MetaError(f"Meta API geweigerd (HTTP {response.status_code}, code {code}).")
+            raise MetaError(f"Meta API geweigerd (HTTP {response.status_code}, code {code}).", code=code)
         return data
 
     def verify(self):
@@ -231,7 +248,16 @@ def engage(db, client, now):
             prospect.status = "processing"
             db.commit()
             account_likes = 0
-            recent_media = client.media(prospect.username)
+            try:
+                recent_media = client.media(prospect.username)
+            except MetaError as exc:
+                if str(exc.code) == "110":
+                    # Invalid/inaccessible/non-business target, not an auth
+                    # failure of our own account: skip only this prospect.
+                    prospect.status = "unavailable"
+                    db.commit()
+                    continue
+                raise
             random.SystemRandom().shuffle(recent_media)
             for media in recent_media:
                 if account_likes >= PER_ACCOUNT or used + count >= DAILY_LIMIT:

@@ -19,6 +19,14 @@
     <div class="setup"><span class="warn">Nog niet verbonden</span></div>
     <h2>Zoho is klaar om te koppelen</h2>
     <p>Klik op de knop en geef via Zoho één keer toestemming. Daarna probeert de leadmachine maximaal 30 voorbereide concepten direct in Zoho op te slaan. Er worden geen mails verzonden.</p>
+    <div class="panel" style="margin:16px 0;padding:18px">
+      <p><strong>Zoho zegt: 'Ongeldige URI voor omleiding'?</strong></p>
+      <p>Dit is geen wachtwoordfout. Voeg de onderstaande exacte URL toe aan <em>Authorized Redirect URIs</em> bij de <strong>bestaande</strong> Server-based Application in de Zoho API Console. Bewaar de bestaande URI indien nodig.</p>
+      <pre class="reasons" id="zoho-redirect-uri" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ redirect_uri }}</pre>
+      <button class="button ghost" type="button" onclick="navigator.clipboard.writeText(document.getElementById('zoho-redirect-uri').innerText)">Kopieer omleidings-URL</button>
+      <p><a href="https://api-console.zoho.eu/" target="_blank" rel="noopener noreferrer">Open Zoho API Console (EU)</a></p>
+      <p class="hint">Open de bestaande app, bewerk de Redirect URI(s), voeg de nieuwe URL toe en sla op. Kom daarna terug en klik op 'Verbind Zoho Mail'. Geen nieuwe Client ID of Client Secret nodig.</p>
+    </div>
     <a class="button" href="/integrations/zoho/connect">Verbind Zoho Mail</a>
   {% else %}
     <div class="setup"><span class="warn">Configuratie nodig</span></div>

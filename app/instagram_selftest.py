@@ -151,6 +151,49 @@ class InstagramSmoke(unittest.TestCase):
         self.assertEqual(result["status"], "complete")
         self.assertEqual(called, ["newpriorityclub"])
 
+    def test_amsterdam_0900_in_winter_and_summer(self):
+        with patch.dict("os.environ", {"INSTAGRAM_DAILY_NOT_BEFORE": "2026-10-29"}):
+            self.assertFalse(ig._daily_due(datetime(2026, 10, 29, 7, 59, tzinfo=timezone.utc)))
+            self.assertTrue(ig._daily_due(datetime(2026, 10, 29, 8, 0, tzinfo=timezone.utc)))
+            self.assertTrue(ig._daily_due(datetime(2026, 7, 1, 7, 0, tzinfo=timezone.utc)))
+            self.assertFalse(ig._daily_due(datetime(2026, 7, 1, 6, 59, tzinfo=timezone.utc)))
+            self.assertFalse(ig._daily_due(datetime(2026, 10, 28, 13, 0, tzinfo=timezone.utc)))
+
+    def test_once_per_day_across_startup_and_health_wakes(self):
+        discovered = []
+        class FixedDate(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 10, 29, 9, tzinfo=timezone.utc)
+        with patch.object(ig, "datetime", FixedDate), \
+             patch.object(ig, "SessionLocal", return_value=self.db), \
+             patch.object(ig, "enabled", return_value=True), \
+             patch.object(ig, "connection_ready", return_value=False), \
+             patch.object(ig, "discover", side_effect=lambda db: (
+                 discovered.append(True) or {"websites_scanned": 50, "accounts_found": 0}
+             )), \
+             patch.dict("os.environ", {"INSTAGRAM_DAILY_NOT_BEFORE": "2026-10-29"}):
+            ig.run_background()
+            ig.run_background()
+        self.assertEqual(discovered, [True])
+        runs = self.db.scalars(select(ChatCommand).where(
+            ChatCommand.command_id == "instagram-day-2026-10-29")).all()
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0].status, "complete")
+
+    def test_priority_queue_blocks_organic_likes(self):
+        priority.import_mailing_csv(self.db, b"website\\nhttps://club2.example.org\\n")
+        self.db.add(InstagramProspect(username="organicclub", lead_id=1,
+                                      source_url="https://club.example.org"))
+        self.db.commit()
+        class ReadOnlyClient:
+            def verify(self): pass
+            def media(self, username):
+                raise AssertionError("Must not engage organic account while list is queued")
+        result = ig.engage(self.db, ReadOnlyClient(), NOW)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["likes"], 0)
+
     def test_csv_rejects_invalid_files(self):
         with self.assertRaises(ValueError):
             priority.parse_mailing_csv(b"onbekend,zonder-website\nA,B\n")

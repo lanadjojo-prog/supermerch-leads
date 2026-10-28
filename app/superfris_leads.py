@@ -456,6 +456,13 @@ def run_superfris_pass(db: Session) -> dict:
     if not _guard.acquire(blocking=False):
         return {"status": "already_running", "sent": 0}
     try:
+        if os.getenv("LEADS_DISCOVERY_PROVIDER", "").lower() == "chatgpt":
+            saved = _make_drafts(db)
+            return {"status": "chatgpt_leads_ingest_mode",
+                    "drafts_created": saved,
+                    "pending_drafts": int(db.scalar(select(func.count(SuperfrisLead.id)).where(
+                        SuperfrisLead.status.in_(("ready", "ready_ai"))
+                    )) or 0), "sent": 0}
         day = local_now.date().isoformat()
         # One-time new pipeline namespace: old failed API slots must not block OSM recovery.
         slot_key = f"superfris-hour-{day}-{local_now.hour:02d}-osm-v2"

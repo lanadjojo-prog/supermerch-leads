@@ -18,8 +18,24 @@ from ..database import SessionLocal
 from ..models import ChatCommand, InstagramAction, InstagramProspect, Lead
 from .crawler import crawl_website
 
-DAILY_LIMIT = 10
+def _bounded_env(name, default, ceiling):
+    try:
+        return max(1, min(int(os.getenv(name, str(default))), ceiling))
+    except (ValueError, TypeError):
+        return default
+
+
+DAILY_LIMIT = _bounded_env("INSTAGRAM_DAILY_LIKE_LIMIT", 100, 100)
 PER_ACCOUNT = 2
+DAILY_ACCOUNTS_LIMIT = _bounded_env("INSTAGRAM_DAILY_ACCOUNTS_LIMIT", 50, 100)
+
+
+def _today_start_utc(now=None):
+    now = now or datetime.now(timezone.utc)
+    local = now.astimezone(settings.local_timezone)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight.astimezone(timezone.utc).replace(tzinfo=None)
+
 
 
 def enabled():
@@ -106,14 +122,25 @@ class MetaClient:
 
 
 def discover(db):
-    scanned = found = 0
+    from .instagram_priority import discover_priority
+    # One shared daily scan budget, prioritising imported business domains.
+    used = db.scalar(select(func.count(ChatCommand.id)).where(
+        ChatCommand.action.in_(("instagram_priority_scan", "instagram_discovery")),
+        ChatCommand.created_at >= _today_start_utc())) or 0
+    remaining = max(0, DAILY_ACCOUNTS_LIMIT - used)
+    first = discover_priority(db, remaining, claim)
+    scanned = first["websites_scanned"]
+    found = first["accounts_found"]
+    if remaining <= scanned:
+        return {"websites_scanned": scanned, "accounts_found": found,
+                "priority_websites_scanned": scanned}
     # Only prospects already qualified for SuperMerch by the existing engine.
     leads = db.scalars(select(Lead).where(
         Lead.score >= 60,
         Lead.status.in_(["ready_for_review", "approved", "drafted", "sent", "contacted", "possible"])
     ).order_by(Lead.score.desc(), Lead.id)).all()
     for lead in leads:
-        if scanned >= 5:
+        if scanned >= remaining:
             break
         row = claim(db, f"instagram-website-{lead.id}", "instagram_discovery")
         if row is None:
@@ -133,7 +160,8 @@ def discover(db):
         row.status = "complete" if result.pages else "crawl_failed"
         row.finished_at = datetime.utcnow()
         db.commit()
-    return {"websites_scanned": scanned, "accounts_found": found}
+    return {"websites_scanned": scanned, "accounts_found": found,
+            "priority_websites_scanned": first["websites_scanned"]}
 
 
 def reserve_like(db, username, media, day):
@@ -160,19 +188,30 @@ def engage(db, client, now):
     used = db.scalar(select(func.count(InstagramAction.id)).where(InstagramAction.day_slot.like(f"{day}:%"))) or 0
     if used >= DAILY_LIMIT:
         return {"status": "daily_limit", "likes": 0}
+    accounts_today = db.scalar(select(func.count(ChatCommand.id)).where(
+        ChatCommand.action == "instagram_engagement",
+        ChatCommand.created_at >= _today_start_utc(now))) or 0
+    if accounts_today >= DAILY_ACCOUNTS_LIMIT:
+        return {"status": "daily_account_limit", "likes": 0}
     count = 0
     try:
         client.verify()
+        from .instagram_priority import priority_usernames
+        preferred = priority_usernames(db)
         prospects = db.scalars(select(InstagramProspect).where(
-            InstagramProspect.status == "discovered").order_by(InstagramProspect.id).limit(1)).all()
-        for prospect in prospects:
+            InstagramProspect.status == "discovered").order_by(InstagramProspect.id).limit(1000)).all()
+        prospects.sort(key=lambda p: (p.username not in preferred, p.id))
+        for prospect in prospects[:DAILY_ACCOUNTS_LIMIT - accounts_today]:
+            if used + count >= DAILY_LIMIT:
+                break
             # Claim the account permanently before external work: no repeat bursts.
             if not claim(db, f"instagram-account-{prospect.username}", "instagram_engagement"):
                 continue
             prospect.status = "processing"
             db.commit()
+            account_likes = 0
             for media in client.media(prospect.username):
-                if count >= PER_ACCOUNT:
+                if account_likes >= PER_ACCOUNT or used + count >= DAILY_LIMIT:
                     break
                 try:
                     posted = datetime.fromisoformat(media["timestamp"].replace("Z", "+00:00"))
@@ -195,6 +234,7 @@ def engage(db, client, now):
                     raise
                 action.status = "liked"
                 count += 1
+                account_likes += 1
                 db.commit()
             prospect.status = "processed"
             db.commit()
@@ -253,5 +293,7 @@ def status_summary():
             "paused": paused(db),
             "accounts_found": db.scalar(select(func.count(InstagramProspect.id))) or 0,
             "confirmed_likes": db.scalar(select(func.count(InstagramAction.id)).where(InstagramAction.status == "liked")) or 0,
+            "daily_like_limit": DAILY_LIMIT,
+            "daily_account_limit": DAILY_ACCOUNTS_LIMIT,
             "last_run_status": latest.status if latest else "not_started",
         }

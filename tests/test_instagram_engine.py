@@ -47,14 +47,15 @@ def test_two_likes_once(db):
     assert len(client.calls) == 2
 
 def test_limit_and_duplicate_reservations(db):
-    for n in range(10): assert ig.reserve_like(db,'club',media(n),'2026-10-27')
-    assert ig.reserve_like(db,'club',media(10),'2026-10-27') is None
+    for n in range(ig.DAILY_LIMIT):
+        assert ig.reserve_like(db,'club',media(n),'2026-10-27')
+    assert ig.reserve_like(db,'club',media(ig.DAILY_LIMIT),'2026-10-27') is None
     assert ig.reserve_like(db,'club',media(0),'2026-10-28') is None
     client=Client()
     assert ig.engage(db,client,NOW)['status']=='daily_limit'
     assert not client.calls
     assert db.get(InstagramProspect,1).status=='discovered'
-    assert ig.reserve_like(db,'club',media(10),'2026-10-28')
+    assert ig.reserve_like(db,'club',media(ig.DAILY_LIMIT),'2026-10-28')
 
 def test_error_pauses_without_retry(db):
     client=Client(fail=True)
@@ -168,3 +169,71 @@ def test_connecting_meta_after_discovery_starts_once_in_same_hour(db,monkeypatch
     ig.run_background()
     assert len(client.calls)==2
     assert db.scalar(select(func.count(InstagramAction.id)))==2
+
+
+def test_mailing_csv_import_is_deduplicated_and_no_email_is_stored(db):
+    from app.models import ChatCommand
+    from app.services.instagram_priority import import_mailing_csv, priority_counts
+    payload = ("Bedrijfsnaam;E-mail;Website\n"
+               "Nieuwe club;directie@newclub.nl;https://newclub.nl\n"
+               "Nieuwe club;contact@newclub.nl;https://newclub.nl\n"
+               "Privé persoon;persoon@gmail.com;\n").encode()
+    first = import_mailing_csv(db, payload)
+    assert first == {'toegevoegd':1,'al_bekend':0,'overgeslagen':1,'totaal_uniek':1}
+    assert import_mailing_csv(db, payload)['al_bekend'] == 1
+    queue = db.scalars(select(ChatCommand).where(ChatCommand.action=='instagram_priority')).all()
+    assert len(queue) == 1 and queue[0].status == 'queued'
+    assert 'directie@' not in queue[0].result
+    assert 'contact@' not in queue[0].result
+    assert priority_counts(db)['wacht'] == 1
+
+
+def test_priority_mailing_list_scans_before_regular_leads(db, monkeypatch):
+    from app.models import ChatCommand
+    from app.services import instagram_priority as priority
+    priority.import_mailing_csv(db, b'bedrijfsnaam,website\nMijn club,https://newclub.nl\n')
+    visited = []
+    def crawl(url):
+        visited.append(url)
+        return SimpleNamespace(
+            pages=[(url, 'Organisatie')],
+            instagram_profiles=[('mijnclub', url + '/contact')])
+    monkeypatch.setattr(priority, 'crawl_website', crawl)
+    monkeypatch.setattr(ig, 'crawl_website', lambda url: (_ for _ in ()).throw(
+        AssertionError("Regular leads must wait for the imported list")))
+    monkeypatch.setattr(ig, 'DAILY_ACCOUNTS_LIMIT', 1)
+    assert ig.discover(db) == {
+        'websites_scanned': 1, 'accounts_found': 1, 'priority_websites_scanned': 1}
+    assert visited == ['https://newclub.nl']
+    assert db.scalar(select(InstagramProspect).where(
+        InstagramProspect.username=='mijnclub')) is not None
+    assert db.scalar(select(ChatCommand).where(
+        ChatCommand.action=='instagram_priority')).status == 'matched'
+    assert ig.discover(db)['websites_scanned'] == 0
+
+
+def test_engagement_prefers_imported_account_even_if_newer(db, monkeypatch):
+    from app.models import ChatCommand
+    import json
+    from app.services import instagram_priority as priority
+    from app.models import Lead
+    priority.import_mailing_csv(db, b'company,domain\nNieuwe club,newclub.nl\n')
+    target = db.scalar(select(ChatCommand).where(ChatCommand.action=='instagram_priority'))
+    target.status = 'matched'
+    value = json.loads(target.result)
+    value['username'] = 'newclub'
+    target.result = json.dumps(value)
+    db.add(Lead(id=2, campaign_id=1, company_name='Newclub',
+                domain='newclub.nl', website='https://newclub.nl',
+                score=0, status='instagram_priority'))
+    db.add(InstagramProspect(username='newclub', lead_id=2, source_url='https://newclub.nl'))
+    db.commit()
+    monkeypatch.setattr(ig, 'DAILY_ACCOUNTS_LIMIT', 1)
+    client = Client()
+    names = []
+    def retrieve(username):
+        names.append(username)
+        return [media(100), media(101)]
+    client.media = retrieve
+    assert ig.engage(db, client, NOW)['likes'] == 2
+    assert names == ['newclub']

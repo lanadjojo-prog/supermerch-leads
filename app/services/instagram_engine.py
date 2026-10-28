@@ -25,9 +25,9 @@ def _bounded_env(name, default, ceiling):
         return default
 
 
-DAILY_LIMIT = _bounded_env("INSTAGRAM_DAILY_LIKE_LIMIT", 60, 60)
+DAILY_LIMIT = _bounded_env("INSTAGRAM_DAILY_LIKE_LIMIT", 100, 100)
 PER_ACCOUNT = 2
-DAILY_ACCOUNTS_LIMIT = _bounded_env("INSTAGRAM_DAILY_ACCOUNTS_LIMIT", 30, 100)
+DAILY_ACCOUNTS_LIMIT = _bounded_env("INSTAGRAM_DAILY_ACCOUNTS_LIMIT", 50, 100)
 
 
 def _today_start_utc(now=None):

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero compact">
-  <div><p class="eyebrow">KOPPELINGEN</p><h1>Zoho Mail</h1><p>Verstuur goedgekeurde outreach rechtstreeks vanuit je SuperMerch-mailbox.</p></div>
+  <div><p class="eyebrow">KOPPELINGEN</p><h1>Zoho Mail</h1><p>Je 30 voorbereide SuperMerch-concepten kunnen na het verbinden van Zoho Mail veilig in Concepten worden opgeslagen. Er wordt niets automatisch verzonden.</p></div>
 </section>
 
 <section class="panel narrow">
@@ -11,14 +11,14 @@
   {% if connected %}
     <div class="setup"><span class="ok">Verbonden</span></div>
     <h2>{{ integration.email_address }}</h2>
-    <p>Leads kunnen na goedkeuring met één extra bevestiging vanuit deze mailbox worden verstuurd.</p>
+    <p>De conceptgenerator gebruikt deze mailbox. De berichten worden eerst als concept opgeslagen en niet automatisch verzonden.</p>
     <form method="post" action="/integrations/zoho/disconnect" onsubmit="return confirm('Zoho Mail ontkoppelen?')">
       <button class="button ghost" type="submit">Ontkoppelen</button>
     </form>
   {% elif configured %}
     <div class="setup"><span class="warn">Nog niet verbonden</span></div>
     <h2>Zoho is klaar om te koppelen</h2>
-    <p>Klik hieronder. Je wordt naar Zoho gestuurd om SuperMerch Lead Engine toestemming te geven.</p>
+    <p>Klik op de knop en geef via Zoho één keer toestemming. Daarna probeert de leadmachine maximaal 30 voorbereide concepten direct in Zoho op te slaan. Er worden geen mails verzonden.</p>
     <a class="button" href="/integrations/zoho/connect">Verbind Zoho Mail</a>
   {% else %}
     <div class="setup"><span class="warn">Configuratie nodig</span></div>

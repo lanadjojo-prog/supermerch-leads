@@ -155,9 +155,10 @@ class InstagramSmoke(unittest.TestCase):
         with patch.dict("os.environ", {"INSTAGRAM_DAILY_NOT_BEFORE": "2026-10-29"}):
             self.assertFalse(ig._daily_due(datetime(2026, 10, 29, 7, 59, tzinfo=timezone.utc)))
             self.assertTrue(ig._daily_due(datetime(2026, 10, 29, 8, 0, tzinfo=timezone.utc)))
+            self.assertFalse(ig._daily_due(datetime(2026, 10, 28, 13, 0, tzinfo=timezone.utc)))
+        with patch.dict("os.environ", {"INSTAGRAM_DAILY_NOT_BEFORE": ""}):
             self.assertTrue(ig._daily_due(datetime(2026, 7, 1, 7, 0, tzinfo=timezone.utc)))
             self.assertFalse(ig._daily_due(datetime(2026, 7, 1, 6, 59, tzinfo=timezone.utc)))
-            self.assertFalse(ig._daily_due(datetime(2026, 10, 28, 13, 0, tzinfo=timezone.utc)))
 
     def test_once_per_day_across_startup_and_health_wakes(self):
         discovered = []

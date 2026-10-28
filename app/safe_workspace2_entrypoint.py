@@ -38,13 +38,35 @@ def _safe_database_failure_reason(exc):
         return "database_password_or_user_rejected"
     if any(term in msg for term in ("connection timed out", "timeout expired", "operation timed out")):
         return "database_network_timeout_check_ip_allowlist"
-    if any(term in msg for term in ("connection refused", "network is unreachable")):
-        return "database_host_unreachable_check_external_url"
+    if "connection refused" in msg:
+        return "database_tcp_connection_refused"
+    if "network is unreachable" in msg:
+        return "database_network_unreachable"
     if "no pg_hba.conf entry" in msg:
         return "database_access_rejected_check_ip_allowlist_and_tls"
     if any(term in msg for term in ("ssl", "tls", "certificate verify failed")):
         return "database_tls_negotiation_failed"
     return "database_connection_failed_check_external_url_and_access"
+
+
+def _database_network_diagnostic(url):
+    """Report only address families and socket results, never credentials."""
+    import socket
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    try:
+        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 5432,
+                                       type=socket.SOCK_STREAM)
+        results = []
+        for family, socktype, proto, _, address in addresses:
+            with socket.socket(family, socktype, proto) as probe:
+                probe.settimeout(2)
+                code = probe.connect_ex(address)
+            results.append({"family": "ipv4" if family == socket.AF_INET else "ipv6",
+                            "socket_result": code})
+        print("DATABASE_NETWORK_DIAGNOSTIC", json.dumps(results), flush=True)
+    except OSError as exc:
+        print("DATABASE_NETWORK_DIAGNOSTIC", type(exc).__name__, "errno=" + str(exc.errno), flush=True)
 
 
 def _existing_database_preflight():
@@ -105,6 +127,8 @@ def _existing_database_preflight():
     except Exception as exc:
         # Never expose passwords, URLs, SQL or provider tokens in logs/HTTP responses.
         print("Workspace 2 DB preflight failed:", type(exc).__name__, _safe_database_failure_reason(exc), flush=True)
+        if os.environ.get("DATABASE_NETWORK_DIAGNOSTICS", "false").lower() == "true":
+            _database_network_diagnostic(url)
         return "DATABASE_URL (connection unavailable: check external URL, TLS and IP allowlist)"
     return ""
 

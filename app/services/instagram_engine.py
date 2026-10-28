@@ -6,6 +6,7 @@ resolves the error and explicitly clears the pause in the database.
 """
 import json
 import os
+import random
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -198,10 +199,22 @@ def engage(db, client, now):
         client.verify()
         from .instagram_priority import priority_usernames
         preferred = priority_usernames(db)
-        prospects = db.scalars(select(InstagramProspect).where(
-            InstagramProspect.status == "discovered").order_by(InstagramProspect.id).limit(1000)).all()
-        prospects.sort(key=lambda p: (p.username not in preferred, p.id))
-        for prospect in prospects[:DAILY_ACCOUNTS_LIMIT - accounts_today]:
+        remaining_accounts = DAILY_ACCOUNTS_LIMIT - accounts_today
+        # Query priority handles directly: never lose a newly imported account
+        # behind the first 1,000 old organic prospects.
+        preferred_prospects = db.scalars(
+            select(InstagramProspect).where(
+                InstagramProspect.status == "discovered",
+                InstagramProspect.username.in_(preferred),
+            ).order_by(InstagramProspect.id).limit(remaining_accounts)
+        ).all() if preferred else []
+        ordinary_query = select(InstagramProspect).where(
+            InstagramProspect.status == "discovered")
+        if preferred:
+            ordinary_query = ordinary_query.where(InstagramProspect.username.not_in(preferred))
+        ordinary_prospects = db.scalars(ordinary_query.order_by(
+            InstagramProspect.id).limit(max(0, remaining_accounts - len(preferred_prospects)))).all()
+        for prospect in [*preferred_prospects, *ordinary_prospects]:
             if used + count >= DAILY_LIMIT:
                 break
             # Claim the account permanently before external work: no repeat bursts.
@@ -210,7 +223,9 @@ def engage(db, client, now):
             prospect.status = "processing"
             db.commit()
             account_likes = 0
-            for media in client.media(prospect.username):
+            recent_media = client.media(prospect.username)
+            random.SystemRandom().shuffle(recent_media)
+            for media in recent_media:
                 if account_likes >= PER_ACCOUNT or used + count >= DAILY_LIMIT:
                     break
                 try:

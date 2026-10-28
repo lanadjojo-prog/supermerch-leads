@@ -48,6 +48,13 @@ with the correct Meta permissions. Verify @supermerch.nl and a real API request
 before enabling `INSTAGRAM_LIKES_ENABLED`. Local mocked tests do not establish
 live Meta authorization.
 
+For Instagram operation while the mailbox is still disconnected, use
+`DATABASE_BOOTSTRAP_MODE=instagram_only`. All mail automation and mailbox
+self-tests must still be explicitly disabled. This mode permits the separate
+Instagram like switch after the Meta connection has been authorized and tested;
+the worker still verifies the account and enforces its normal limits. It never
+requires reconnecting Zoho merely to operate Instagram.
+
 ## Validation
 
 ```bash

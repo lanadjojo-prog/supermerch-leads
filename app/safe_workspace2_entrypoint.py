@@ -105,15 +105,18 @@ def _existing_database_preflight():
     if params.get("sslmode") not in ("require", "verify-ca", "verify-full"):
         return "DATABASE_URL (external connection must use sslmode=require)"
     mode = os.environ.get("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower()
-    if mode not in ("existing", "fresh_discovery"):
-        return "DATABASE_BOOTSTRAP_MODE (use existing or fresh_discovery)"
-    if mode == "fresh_discovery":
+    replacement_modes = ("fresh_discovery", "instagram_only")
+    if mode not in ("existing", *replacement_modes):
+        return "DATABASE_BOOTSTRAP_MODE (use existing, fresh_discovery or instagram_only)"
+    if mode in replacement_modes:
         # A replacement DB has neither history nor a stored mailbox. Allow the
         # dashboard and manual discovery, but never replay old mail work.
-        for name in ("AUTOMATION_ENABLED", "AUTOMATED_OUTREACH_ENABLED",
-                     "INSTAGRAM_LIKES_ENABLED", "SUPERFRIS_ENABLED",
+        disabled = ["AUTOMATION_ENABLED", "AUTOMATED_OUTREACH_ENABLED", "SUPERFRIS_ENABLED",
                      "ZOHO_SELF_TEST", "ZOHO_DRAFT_SELF_TEST",
-                     "SUPERFRIS_DRAFT_SELFTEST_ON_STARTUP"):
+                     "SUPERFRIS_DRAFT_SELFTEST_ON_STARTUP"]
+        if mode == "fresh_discovery":
+            disabled.append("INSTAGRAM_LIKES_ENABLED")
+        for name in disabled:
             if os.environ.get(name, "").strip().lower() not in ("0", "false", "no", "off"):
                 return f"{name} (must be explicitly false for fresh_discovery)"
     try:
@@ -127,7 +130,7 @@ def _existing_database_preflight():
                 # PgBouncer rejects the options startup parameter. A transaction
                 # scoped timeout works for both direct and pooled connections.
                 cur.execute("SET LOCAL statement_timeout = '6s'")
-                if mode == "fresh_discovery":
+                if mode in replacement_modes:
                     cur.execute("SELECT 1")
                     cur.fetchone()
                     return ""
@@ -435,7 +438,7 @@ def main():
         sys.exit(1)
     if os.environ.get("ZOHO_DRY_RUN_CHECK", "").strip().lower() in ("1", "true", "yes"):
         _non_sending_zoho_diagnostic()
-    if os.environ.get("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower() == "fresh_discovery":
+    if os.environ.get("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower() in ("fresh_discovery", "instagram_only"):
         print("Replacement PostgreSQL connected; previous history not restored; automatic mail disabled.", flush=True)
         os.environ.pop("LEAD_CATCHUP_ON_STARTUP_DATE", None)
     elif os.environ.get("LEADS_READINESS_CHECK", "").strip().lower() in ("1", "true", "yes"):

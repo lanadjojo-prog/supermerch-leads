@@ -63,6 +63,18 @@ def test_default_still_requires_original_data(replacement, monkeypatch):
     assert "existing lead tables missing" in boot._existing_database_preflight()
 
 
+def test_instagram_can_operate_without_a_zoho_mailbox(replacement, monkeypatch):
+    monkeypatch.setenv("DATABASE_BOOTSTRAP_MODE", "instagram_only")
+    monkeypatch.setenv("INSTAGRAM_LIKES_ENABLED", "true")
+    assert boot._existing_database_preflight() == ""
+
+
+def test_instagram_only_still_refuses_mail_automation(replacement, monkeypatch):
+    monkeypatch.setenv("DATABASE_BOOTSTRAP_MODE", "instagram_only")
+    monkeypatch.setenv("AUTOMATED_OUTREACH_ENABLED", "true")
+    assert "AUTOMATED_OUTREACH_ENABLED" in boot._existing_database_preflight()
+
+
 def test_replacement_still_requires_tls(replacement, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost/replacement?sslmode=disable")
     assert "sslmode=require" in boot._existing_database_preflight()

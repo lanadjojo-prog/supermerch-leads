@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
+import os
 import re
 import threading
 import time
@@ -155,12 +156,18 @@ def discover_open_data(query: str, region: str, limit: int = 12, *,
             time.sleep(wait)
         _LAST_REQUEST = time.monotonic()
         elements = None
-        for endpoint in ENDPOINTS:
+        # Optional free, rate-limited hosted Overpass API. Keep its credential
+        # out of the URL and logs; never switch hosts to evade a 429 response.
+        hosted_key = os.getenv("OVERPASS_CH_API_KEY", "").strip()
+        sources = ([( "https://api.overpass.ch/v1/interpreter", {"X-API-Key": hosted_key})]
+                   if hosted_key else [])
+        sources += [(url, {}) for url in ENDPOINTS]
+        for endpoint, auth_headers in sources:
             try:
                 with httpx.Client(timeout=25) as client:
                     resp = client.post(
                         endpoint, data={"data": _query(*coords, segment)},
-                        headers={"User-Agent": "SuperMerch-Superfris-Leads/1.1 (+https://supermerch.nl; ODbL attribution)"},
+                        headers={"User-Agent": "SuperMerch-Superfris-Leads/1.1 (+https://supermerch.nl; ODbL attribution)", **auth_headers},
                     )
                 # Never evade a public host's rate limits with another host.
                 if resp.status_code in (429, 406, 503, 504):

@@ -149,16 +149,19 @@ def test_finished_campaign_discovers_without_liking(db,monkeypatch):
     assert result['instagram_discovery']['accounts_found']==1
 
 
-def test_connecting_meta_after_discovery_starts_once_in_same_hour(db,monkeypatch):
+def test_daily_run_never_repeats_when_meta_setting_changes(db,monkeypatch):
     class FixedDatetime(datetime):
         @classmethod
         def now(cls, tz=None): return NOW
     monkeypatch.setattr(ig,'datetime',FixedDatetime)
     monkeypatch.setenv('INSTAGRAM_CRAWLER_ENABLED','true')
+    monkeypatch.setenv('INSTAGRAM_DAILY_NOT_BEFORE','')
     monkeypatch.setenv('INSTAGRAM_LIKES_ENABLED','false')
     monkeypatch.setattr(ig,'connection_ready',lambda: True)
     monkeypatch.setattr(ig,'SessionLocal',lambda: db)
-    monkeypatch.setattr(ig,'discover',lambda session: {'websites_scanned':0,'accounts_found':0})
+    discovered=[]
+    monkeypatch.setattr(ig,'discover',lambda session: (
+        discovered.append(True) or {'websites_scanned':0,'accounts_found':0}))
     client=Client()
     client.close=lambda: None
     monkeypatch.setattr(ig,'MetaClient',lambda: client)
@@ -167,8 +170,11 @@ def test_connecting_meta_after_discovery_starts_once_in_same_hour(db,monkeypatch
     monkeypatch.setenv('INSTAGRAM_LIKES_ENABLED','true')
     ig.run_background()
     ig.run_background()
-    assert len(client.calls)==2
-    assert db.scalar(select(func.count(InstagramAction.id)))==2
+    assert not client.calls
+    assert len(discovered)==1
+    from app.models import ChatCommand
+    assert db.scalar(select(func.count(ChatCommand.id)).where(
+        ChatCommand.command_id=='instagram-day-2026-10-27')) == 1
 
 
 def test_mailing_csv_import_is_deduplicated_and_no_email_is_stored(db):

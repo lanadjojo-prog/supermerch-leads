@@ -62,6 +62,18 @@ def _existing_database_preflight():
     params = dict(parse_qsl(urlsplit(url).query))
     if params.get("sslmode") not in ("require", "verify-ca", "verify-full"):
         return "DATABASE_URL (external connection must use sslmode=require)"
+    mode = os.environ.get("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower()
+    if mode not in ("existing", "fresh_discovery"):
+        return "DATABASE_BOOTSTRAP_MODE (use existing or fresh_discovery)"
+    if mode == "fresh_discovery":
+        # A replacement DB has neither history nor a stored mailbox. Allow the
+        # dashboard and manual discovery, but never replay old mail work.
+        for name in ("AUTOMATION_ENABLED", "AUTOMATED_OUTREACH_ENABLED",
+                     "INSTAGRAM_LIKES_ENABLED", "SUPERFRIS_ENABLED",
+                     "ZOHO_SELF_TEST", "ZOHO_DRAFT_SELF_TEST",
+                     "SUPERFRIS_DRAFT_SELFTEST_ON_STARTUP"):
+            if os.environ.get(name, "").strip().lower() not in ("0", "false", "no", "off"):
+                return f"{name} (must be explicitly false for fresh_discovery)"
     try:
         import psycopg
         import base64
@@ -70,6 +82,10 @@ def _existing_database_preflight():
         psql = url.replace("postgresql+psycopg://", "postgresql://", 1)
         with psycopg.connect(psql, connect_timeout=6, options="-c statement_timeout=6000") as conn:
             with conn.cursor() as cur:
+                if mode == "fresh_discovery":
+                    cur.execute("SELECT 1")
+                    cur.fetchone()
+                    return ""
                 cur.execute("""SELECT to_regclass('public.campaigns'),
                                       to_regclass('public.leads'),
                                       to_regclass('public.chat_commands'),
@@ -372,7 +388,10 @@ def main():
         sys.exit(1)
     if os.environ.get("ZOHO_DRY_RUN_CHECK", "").strip().lower() in ("1", "true", "yes"):
         _non_sending_zoho_diagnostic()
-    if os.environ.get("LEADS_READINESS_CHECK", "").strip().lower() in ("1", "true", "yes"):
+    if os.environ.get("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower() == "fresh_discovery":
+        print("Replacement PostgreSQL connected; previous history not restored; automatic mail disabled.", flush=True)
+        os.environ.pop("LEAD_CATCHUP_ON_STARTUP_DATE", None)
+    elif os.environ.get("LEADS_READINESS_CHECK", "").strip().lower() in ("1", "true", "yes"):
         _lead_readiness_diagnostic()
     if os.environ.get("ZOHO_SELF_TEST", "").strip().lower() in ("1", "true", "yes"):
         _zoho_send_self_test()

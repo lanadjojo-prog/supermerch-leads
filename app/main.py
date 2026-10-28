@@ -33,7 +33,7 @@ from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds
-from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest  # registers isolated tables
+from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest, drain_verified_chatgpt_backlog  # registers isolated tables
 from .services.open_data_discovery import discover_businesses
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -202,6 +202,17 @@ def _run_current_automation_background():
 
 def _run_superfris_periodic(stop_event: threading.Event):
     """Reuse Workspace 2's running instance, with durable hourly deduplication."""
+    date_scope = os.getenv("SUPERFRIS_CHATGPT_BACKLOG_CATCHUP_DATE", "").strip()
+    today = datetime.now(timezone.utc).astimezone(settings.local_timezone).date().isoformat()
+    if date_scope and date_scope == today:
+        db = SessionLocal()
+        try:
+            result = drain_verified_chatgpt_backlog(db)
+            logger.warning("STRATO ChatGPT verified backlog catch-up: %s", result)
+        except Exception:
+            logger.exception("STRATO verified backlog catch-up failed")
+        finally:
+            db.close()
     while not stop_event.is_set():
         _run_superfris_background()
         stop_event.wait(300)

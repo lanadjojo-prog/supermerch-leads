@@ -18,6 +18,18 @@ class DiscoveryError(RuntimeError):
     pass
 
 
+def prospect_website_url(value):
+    """Known publishers and social platforms are sources, not prospect sites."""
+    url = public_url(value)
+    host = normalize_domain(url)
+    excluded = ("nieuws.nl", "bd.nl", "omroepbrabant.nl", "indebuurt.nl",
+                "facebook.com", "instagram.com", "linkedin.com", "linktr.ee",
+                "eventbrite.nl", "eventbrite.com", "headliner.nl")
+    if any(host == item or host.endswith("." + item) for item in excluded):
+        return ""
+    return url
+
+
 def public_url(value):
     if not isinstance(value, str):
         return ""
@@ -93,7 +105,7 @@ def parse_companies(data, limit, *, allow_source_free=False):
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        claimed_url = public_url(entry.get("website"))
+        claimed_url = prospect_website_url(entry.get("website"))
         name = entry.get("name")
         domain = normalize_domain(claimed_url)
         verified_urls = urls_by_domain.get(domain) or []

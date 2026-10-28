@@ -14,6 +14,7 @@ from ..config import settings
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 RELEVANT_HINTS = (
+    "social", "instagram",
     "contact", "over-ons", "about", "team", "vacature", "vacatures",
     "werken-bij", "careers", "jobs", "nieuws", "news", "event", "events",
     "agenda", "beurs", "expo", "congres", "festival", "toernooi",
@@ -127,4 +128,9 @@ def crawl_website(start_url: str) -> CrawlResult:
                 if any(h in path or h in anchor for h in RELEVANT_HINTS):
                     if href not in visited and href not in candidates:
                         candidates.append(href)
+            # Dedicated social/contact pages often occur after news and event
+            # links in navigation. Visit them within the bounded page budget.
+            candidates.sort(key=lambda link: (
+                0 if any(hint in urlparse(link).path.lower() for hint in ("social", "instagram")) else
+                1 if "contact" in urlparse(link).path.lower() else 2))
     return result

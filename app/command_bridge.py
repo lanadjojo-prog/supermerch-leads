@@ -194,7 +194,26 @@ def process_startup_command(*, discovery_only: bool = False) -> None:
             db.add(campaign)
             db.commit()
             db.refresh(campaign)
-            result = run_campaign(db, campaign)
+            candidates = payload.get("website_candidates")
+            if candidates is None:
+                result = run_campaign(db, campaign)
+            else:
+                from .services.discovery import DiscoveredCompany
+                from .services.openai_discovery import prospect_website_url
+                from .services.site_verification import verify_live_business_url
+                if not isinstance(candidates, list) or len(candidates) > 5:
+                    raise ValueError("website_candidates must contain at most five researched websites")
+                verified = []
+                for candidate in candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    name = str(candidate.get("name") or "").strip()[:220]
+                    url = prospect_website_url(candidate.get("website"))
+                    url = verify_live_business_url(url) if url else ""
+                    if name and url:
+                        verified.append(DiscoveredCompany(name=name, website=url,
+                            source="researched_official_website"))
+                result = run_campaign(db, campaign, companies=verified)
             row.result = json.dumps(
                 {"campaign_id": campaign.id, "campaign_status": campaign.status, **result},
                 ensure_ascii=False,

@@ -92,6 +92,14 @@ class DiscoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(DiscoveryError, "search_not_executed"):
             parse_companies(response([], searched=False), 12)
 
+    def test_news_publisher_is_never_the_prospect_website(self):
+        url = "https://breda.nieuws.nl/cultuur/club-event"
+        data = response([{"name": "Club", "website": url}], sources=[url])
+        with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
+            parse_companies(data, 1)
+        with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
+            parse_companies(data, 1, allow_source_free=True)
+
     def test_no_sources_is_failure_not_success(self):
         with self.assertRaisesRegex(DiscoveryError, "no_verified_sources"):
             parse_companies(response([{"name": "Club", "website": "https://club.nl"}]), 12)

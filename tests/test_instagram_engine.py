@@ -108,3 +108,25 @@ def test_wrong_account_pauses(db):
     client.verify=wrong
     assert ig.engage(db,client,NOW)['status']=='paused'
     assert not client.calls
+
+
+def test_crawler_visits_social_page_before_news_budget_is_exhausted(monkeypatch):
+    import httpx
+    from app.services import crawler
+    requests = []
+    client_factory = httpx.Client
+    def respond(request):
+        requests.append(request.url.path)
+        if request.url.path == '/social-media':
+            body = '<html><a href="https://www.instagram.com/realclub/">Instagram</a></html>'
+        else:
+            body = '<html><p>Club website</p>' + ''.join(
+                f'<a href="/{path}">{path}</a>' for path in
+                ['nieuws/1','nieuws/2','nieuws/3','nieuws/4','contact','social-media']) + '</html>'
+        return httpx.Response(200,headers={'content-type':'text/html'},text=body)
+    monkeypatch.setattr(crawler, '_public_dns_host', lambda _: True)
+    monkeypatch.setattr(crawler.httpx, 'Client', lambda **kwargs:
+        client_factory(**kwargs, transport=httpx.MockTransport(respond)))
+    result = crawler.crawl_website('https://club.example.org/')
+    assert result.instagram_profiles == [('realclub','https://club.example.org/social-media')]
+    assert requests[:3] == ['/', '/social-media', '/contact']

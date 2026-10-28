@@ -74,13 +74,14 @@ def _apply_trigger_context(analysis: dict, triggers: list[dict]) -> dict:
     return analysis
 
 
-def run_campaign(db: Session, campaign: Campaign) -> dict:
+def run_campaign(db: Session, campaign: Campaign, *, companies=None) -> dict:
     campaign.status = "running"
     campaign.last_run_at = datetime.utcnow()
     db.commit()
 
     try:
-        companies = discover_businesses(campaign.search_query, campaign.region, campaign.target_count, niche=campaign.niche)
+        if companies is None:
+            companies = discover_businesses(campaign.search_query, campaign.region, campaign.target_count, niche=campaign.niche)
     except Exception:
         campaign.status = "error"
         db.commit()

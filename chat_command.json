@@ -1,10 +1,14 @@
 {
-  "command_id": "instagram-replacement-discovery-20261028-v1",
+  "command_id": "instagram-official-website-discovery-20261028-v2",
   "action": "start_campaign",
   "payload": {
     "niche": "Carnaval & optochten",
     "region": "Noord-Brabant",
     "search_query": "carnavalsvereniging opening carnavalsseizoen 11 november 2026 programma",
-    "target_count": 5
+    "target_count": 2,
+    "website_candidates": [
+      {"name": "Stichting Kielegat", "website": "https://web.kielegat.nl/evenement/elluf-elluf-2026/"},
+      {"name": "Carnavalsstichting Tilburg", "website": "https://www.kruikenstad.nl/"}
+    ]
   }
 }

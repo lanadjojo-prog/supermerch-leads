@@ -36,7 +36,7 @@ PRODUCT_RE = re.compile(
 )
 EVENT_RE = re.compile(
     r"\b(?:festival|(?:sport)?toernooi|sportevenement|open\s+dag|bedrijfsfeest|"
-    r"jubileum|lustrum|beurs|congres|evenement|heropening|"
+    r"jubileum|lustrum|beurs|congres|evenementen?|heropening|optocht|seizoensopening|"
     r"nieuwe\s+vestiging|opening)\b", re.I
 )
 

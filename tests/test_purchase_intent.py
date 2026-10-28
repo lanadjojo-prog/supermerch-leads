@@ -38,6 +38,11 @@ class PurchaseIntentTests(unittest.TestCase):
     def test_far_future_event_is_not_an_immediate_opportunity(self):
         self.assertEqual(self.detect("Festival op 1 juli 2028."), [])
 
+    def test_dated_carnival_calendar_is_an_event_not_a_purchase_request(self):
+        found = self.detect("Evenementen Elluf Elluf 2026 Datum: 11/11/2026 Tijd: 13:11")
+        self.assertTrue(found)
+        self.assertEqual(found[0]["trigger_type"], "intent_upcoming_event")
+
     def test_unrelated_supplier_request_is_not_merch_intent(self):
         self.assertEqual(
             self.detect("20 oktober 2026: wij zoeken een leverancier voor koffiebonen."),

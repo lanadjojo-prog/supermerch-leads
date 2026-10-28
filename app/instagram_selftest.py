@@ -41,6 +41,30 @@ class InstagramSmoke(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
+    def test_browser_basic_auth_with_live_configuration(self):
+        # Use the actual service configuration without embedding or printing
+        # a password, and check the RFC-compliant browser challenge.
+        import base64
+        from fastapi import Request, HTTPException
+        from .auth import require_basic_auth
+        from .config import settings
+        self.assertEqual(settings.app_username, "Supermerch")
+        self.assertTrue(settings.app_password and settings.app_password != "change-me")
+        token = base64.b64encode((
+            settings.app_username + ":" + settings.app_password
+        ).encode("utf-8"))
+        valid = Request({"type": "http", "method": "GET",
+                         "path": "/instagram/",
+                         "headers": [(b"authorization", b"Basic " + token)]})
+        self.assertIsNone(require_basic_auth(valid))
+        invalid = Request({"type": "http", "method": "GET",
+                           "path": "/instagram/", "headers": []})
+        with self.assertRaises(HTTPException) as caught:
+            require_basic_auth(invalid)
+        self.assertEqual(caught.exception.status_code, 401)
+        self.assertEqual(caught.exception.headers.get("WWW-Authenticate"),
+                         'Basic realm="SuperMerch Leads", charset="UTF-8"')
+
     def test_limits_from_environment(self):
         self.assertEqual(ig.DAILY_ACCOUNTS_LIMIT, 50)
         self.assertEqual(ig.DAILY_LIMIT, 100)

@@ -111,13 +111,14 @@ def _existing_database_preflight():
     if mode in replacement_modes:
         # A replacement DB has neither history nor a stored mailbox. Allow the
         # dashboard and manual discovery, but never replay old mail work.
-        disabled = ["AUTOMATION_ENABLED", "AUTOMATED_OUTREACH_ENABLED",
+        disabled = ["AUTOMATED_OUTREACH_ENABLED",
                      "ZOHO_SELF_TEST", "ZOHO_DRAFT_SELF_TEST",
                      "SUPERFRIS_DRAFT_SELFTEST_ON_STARTUP"]
         # Superfris has its own STRATO IMAP draft-only pipeline. It does not
         # use Zoho, transmit email, or replay any prior SuperMerch campaigns.
-        # Allow its independently deduplicated draft research in fresh mode,
-        # while keeping Zoho and all automatic sending disabled.
+        # Permit draft-only discovery for both brands in fresh mode. Zoho
+        # API saves remain gated by a freshly connected OAuth mailbox; no
+        # automatic sending is permitted, even if discovery is enabled.
         if mode == "fresh_discovery":
             disabled.append("INSTAGRAM_LIKES_ENABLED")
         for name in disabled:

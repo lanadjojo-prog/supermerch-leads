@@ -1,5 +1,6 @@
 """SuperMerch protected admin login with 90-day secure cookie and Operations SSO."""
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -64,7 +65,7 @@ def require_basic_auth(request: Request) -> None:
                     and hmac.compare_digest(password, settings.app_password)):
                 request.state.sm_basic_authenticated = True
                 return
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, binascii.Error):
             pass
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

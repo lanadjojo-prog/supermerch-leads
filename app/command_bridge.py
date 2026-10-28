@@ -30,9 +30,12 @@ def _load_command() -> dict | None:
     return data
 
 
-def process_startup_command() -> None:
+def process_startup_command(*, discovery_only: bool = False) -> None:
     command = _load_command()
     if not command or command.get("action") == "noop":
+        return
+    if discovery_only and command.get("action") != "start_campaign":
+        logger.info("Replacement database: skipped startup action outside discovery")
         return
 
     db = SessionLocal()

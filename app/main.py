@@ -66,8 +66,8 @@ async def lifespan(app: FastAPI):
             db.close()
 
         try:
-            if os.getenv("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower() != "fresh_discovery":
-                process_startup_command()
+            process_startup_command(discovery_only=(
+                os.getenv("DATABASE_BOOTSTRAP_MODE", "existing").strip().lower() == "fresh_discovery"))
         except Exception:
             logger.exception("Startup chat command failed")
 

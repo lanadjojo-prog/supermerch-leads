@@ -47,7 +47,7 @@ def replacement(monkeypatch):
 
 def test_empty_replacement_is_reachable_without_old_mailbox(replacement):
     assert boot._existing_database_preflight() == ""
-    assert replacement == ["SELECT 1"]
+    assert replacement == ["SET LOCAL statement_timeout = '6s'", "SELECT 1"]
 
 
 @pytest.mark.parametrize("flag", FLAGS)
@@ -89,3 +89,42 @@ def test_neon_uses_ipv4_without_replacing_tls_hostname(monkeypatch):
     assert parsed.hostname == "ep-example.neon.tech"
     assert parse_qs(parsed.query) == {"sslmode": ["verify-full"],
         "channel_binding": ["require"], "hostaddr": ["192.0.2.1"]}
+
+
+@pytest.mark.parametrize("action", ["fill_both_draft_queues", "run_daily_drafts",
+    "save_curated_zoho_drafts", "send_direct_emails", "approve_review", "send_approved"])
+def test_fresh_database_never_replays_mail_commands(monkeypatch, action):
+    from app import command_bridge
+    monkeypatch.setattr(command_bridge, "_load_command", lambda: {
+        "command_id": "old-work", "action": action})
+    def forbidden():
+        raise AssertionError("Disallowed startup command must not open the database")
+    monkeypatch.setattr(command_bridge, "SessionLocal", forbidden)
+    command_bridge.process_startup_command(discovery_only=True)
+
+
+def test_fresh_campaign_discovery_can_run_without_mailbox(monkeypatch):
+    from app import command_bridge
+    from app.database import Base
+    from app.models import Campaign, ChatCommand
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    sessions = sessionmaker(bind=create_engine("sqlite://"))
+    Base.metadata.create_all(sessions.kw["bind"])
+    monkeypatch.setattr(command_bridge, "SessionLocal", sessions)
+    monkeypatch.setattr(command_bridge, "_load_command", lambda: {
+        "command_id": "new-discovery", "action": "start_campaign",
+        "payload": {"niche": "Sportclubs", "region": "Nederland", "target_count": 3}})
+    calls = []
+    def discover(db, campaign):
+        calls.append(campaign.target_count)
+        campaign.status = "complete"
+        db.commit()
+        return {"created": 0}
+    monkeypatch.setattr(command_bridge, "run_campaign", discover)
+    command_bridge.process_startup_command(discovery_only=True)
+    command_bridge.process_startup_command(discovery_only=True)
+    assert calls == [3]
+    with sessions() as db:
+        assert db.scalar(select(Campaign)).status == "complete"
+        assert db.scalar(select(ChatCommand)).status == "complete"

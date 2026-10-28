@@ -122,8 +122,11 @@ def _existing_database_preflight():
         import hashlib
         from cryptography.fernet import Fernet
         psql = url.replace("postgresql+psycopg://", "postgresql://", 1)
-        with psycopg.connect(psql, connect_timeout=6, options="-c statement_timeout=6000") as conn:
+        with psycopg.connect(psql, connect_timeout=10) as conn:
             with conn.cursor() as cur:
+                # PgBouncer rejects the options startup parameter. A transaction
+                # scoped timeout works for both direct and pooled connections.
+                cur.execute("SET LOCAL statement_timeout = '6s'")
                 if mode == "fresh_discovery":
                     cur.execute("SELECT 1")
                     cur.fetchone()

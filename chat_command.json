@@ -1,9 +1,10 @@
 {
-  "command_id": "fill-zoho-strato-30-verified-drafts-20261027-v1",
-  "action": "fill_both_draft_queues",
+  "command_id": "instagram-replacement-discovery-20261028-v1",
+  "action": "start_campaign",
   "payload": {
-    "per_mailbox": 30,
-    "max_passes": 16,
-    "send": false
+    "niche": "Carnaval & optochten",
+    "region": "Noord-Brabant",
+    "search_query": "carnavalsvereniging opening carnavalsseizoen 11 november 2026 programma",
+    "target_count": 5
   }
 }

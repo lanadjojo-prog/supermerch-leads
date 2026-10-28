@@ -25,8 +25,9 @@ SUPERFRIS_DRAFT_SELFTEST_ON_STARTUP
 
 This mode verifies a real TLS PostgreSQL connection. Normal application startup
 creates missing tables without dropping or replacing data. The dashboard and
-manual campaign discovery can work without the old mailbox token. Startup
-commands and catch-up jobs are not replayed, and automatic mail and likes remain
+manual campaign discovery can work without the old mailbox token. Only a
+`start_campaign` command may run at startup; mailbox commands and catch-up jobs
+are not replayed. Automatic mail and likes remain
 disabled because their previous reservations are unavailable.
 
 If a backup becomes available, restore into separately verified storage and

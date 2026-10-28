@@ -62,10 +62,16 @@ def claim(db, key, action):
 
 
 def pause(db, reason):
-    row = claim(db, "instagram-engagement-paused", "instagram_pause")
+    # Re-arm a previously resolved pause: a unique command key alone would
+    # silently fail to pause on a second (different) API error.
+    row = db.scalar(select(ChatCommand).where(
+        ChatCommand.command_id == "instagram-engagement-paused"))
+    if row is None:
+        row = claim(db, "instagram-engagement-paused", "instagram_pause")
     if row:
         row.status = "paused"
         row.result = reason
+        row.finished_at = None
         db.commit()
 
 

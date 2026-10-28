@@ -130,3 +130,19 @@ def test_crawler_visits_social_page_before_news_budget_is_exhausted(monkeypatch)
     result = crawler.crawl_website('https://club.example.org/')
     assert result.instagram_profiles == [('realclub','https://club.example.org/social-media')]
     assert requests[:3] == ['/', '/social-media', '/contact']
+
+
+def test_finished_campaign_discovers_without_liking(db,monkeypatch):
+    from app.services.pipeline import run_campaign
+    monkeypatch.setenv('INSTAGRAM_CRAWLER_ENABLED','true')
+    discovered=[]
+    def discover(session):
+        discovered.append(True)
+        return {'websites_scanned':1,'accounts_found':1}
+    monkeypatch.setattr(ig,'discover',discover)
+    def forbidden(*args):
+        raise AssertionError('Campaign completion must never place likes')
+    monkeypatch.setattr(ig,'engage',forbidden)
+    result=run_campaign(db,db.get(Campaign,1),companies=[])
+    assert discovered==[True]
+    assert result['instagram_discovery']['accounts_found']==1

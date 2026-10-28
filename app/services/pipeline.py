@@ -187,7 +187,7 @@ def run_campaign(db: Session, campaign: Campaign, *, companies=None) -> dict:
         campaign.search_query, campaign.region, created, analysed, analysis_failed,
         crawl_failed, official_contacts, dated_opportunities, qualified
     )
-    return {
+    result = {
         "created": created,
         "analysed": analysed,
         "qualified": qualified,
@@ -197,6 +197,16 @@ def run_campaign(db: Session, campaign: Campaign, *, companies=None) -> dict:
         "official_contacts": official_contacts,
         "dated_opportunities": dated_opportunities,
     }
+    # Don't leave newly qualified websites waiting for an already-claimed
+    # hourly Instagram slot. This only discovers profiles; it never likes.
+    from .instagram_engine import enabled, discover
+    if enabled():
+        try:
+            result["instagram_discovery"] = discover(db)
+        except Exception:
+            db.rollback()
+            logger.exception("Instagram discovery after campaign failed")
+    return result
 
 
 def recover_failed_auto_analysis(db: Session, day_iso: str, *, limit: int = 12) -> dict:

@@ -32,7 +32,7 @@ from .models import Campaign, Lead, LeadTrigger, MailIntegration, TenderOpportun
 from .services import zoho_mail
 from .services.automation_scheduler import run_automation_pass, run_automation_scheduler, run_current_automation_slot
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
-from .services.draft_pipeline import _today_utc_bounds
+from .services.draft_pipeline import _today_utc_bounds, prepare_new_zoho_drafts
 from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest, drain_verified_chatgpt_backlog  # registers isolated tables
 from .services.open_data_discovery import discover_businesses
 from .services.intelligence import generate_outreach
@@ -586,12 +586,30 @@ def zoho_connect():
     return RedirectResponse(zoho_mail.authorization_url(f"{settings.app_base_url}/integrations/zoho/callback"), status_code=302)
 
 
+def _save_verified_zoho_backlog_after_auth():
+    """Only create reviewable Zoho drafts, never send mail."""
+    db = SessionLocal()
+    total = 0
+    try:
+        for _ in range(6):
+            outcome = prepare_new_zoho_drafts(db, per_run=5, daily_limit=30)
+            total += outcome["drafts_created"]
+            if outcome["drafts_created"] + outcome["attempts_failed"] == 0:
+                break
+        logger.warning("Zoho OAuth relink backlog draft creation: created=%s sent=0", total)
+    except Exception:
+        logger.exception("Zoho authenticated draft backlog could not finish")
+    finally:
+        db.close()
+
+
 @app.get("/integrations/zoho/callback", name="zoho_callback")
-def zoho_callback(code: str | None = None, state: str | None = None, error: str | None = None, db: Session = Depends(get_db)):
+def zoho_callback(background_tasks: BackgroundTasks, code: str | None = None, state: str | None = None, error: str | None = None, db: Session = Depends(get_db)):
     if error: return RedirectResponse(f"/integrations?error=1&message={quote_plus('Zoho toestemming is niet afgerond: ' + error)}", status_code=303)
     if not code or not state or not zoho_mail.validate_state(state): return RedirectResponse(f"/integrations?error=1&message={quote_plus('Ongeldige of verlopen Zoho-koppeling. Probeer opnieuw.')}", status_code=303)
     try:
         integration = zoho_mail.save_connection(db, zoho_mail.exchange_code(code, f"{settings.app_base_url}/integrations/zoho/callback"))
+        background_tasks.add_task(_save_verified_zoho_backlog_after_auth)
         return RedirectResponse(f"/integrations?message={quote_plus('Zoho Mail verbonden met ' + integration.email_address)}", status_code=303)
     except Exception as exc: return RedirectResponse(f"/integrations?error=1&message={quote_plus('Zoho koppelen mislukt: ' + str(exc))}", status_code=303)
 

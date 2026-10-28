@@ -452,16 +452,30 @@ def run_superfris_pass(db: Session) -> dict:
     try:
         day = local_now.date().isoformat()
         # One-time new pipeline namespace: old failed API slots must not block OSM recovery.
-        slot_key = f"superfris-hour-{day}-{local_now.hour:02d}-osm-v1"
-        if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == slot_key)):
-            return {"status": "slot_already_claimed", "date": day, "sent": 0}
-        record = ChatCommand(command_id=slot_key, action="superfris_discovery", status="running")
-        db.add(record)
-        try:
+        slot_key = f"superfris-hour-{day}-{local_now.hour:02d}-osm-v2"
+        existing = db.scalar(select(ChatCommand).where(ChatCommand.command_id == slot_key))
+        if existing is not None:
+            old_enough = (datetime.utcnow() - timedelta(minutes=30))
+            can_retry = (
+                (existing.status == "error" and existing.finished_at
+                 and existing.finished_at <= old_enough)
+                or (existing.status == "running" and existing.created_at <= old_enough)
+            )
+            if not can_retry:
+                return {"status": "slot_already_claimed", "date": day, "sent": 0}
+            existing.status = "running"
+            existing.finished_at = None
+            existing.result = None
             db.commit()
-        except IntegrityError:
-            db.rollback()
-            return {"status": "slot_already_claimed", "sent": 0}
+            record = existing
+        else:
+            record = ChatCommand(command_id=slot_key, action="superfris_discovery", status="running")
+            db.add(record)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                return {"status": "slot_already_claimed", "sent": 0}
         try:
             discovery_error = None
             try:
@@ -480,6 +494,7 @@ def run_superfris_pass(db: Session) -> dict:
             record = db.scalar(select(ChatCommand).where(ChatCommand.command_id == slot_key))
             record.status = "error" if discovery_error else "complete"
             record.result = discovery_error
+            record.finished_at = datetime.utcnow()
             db.commit()
             return {
                 "status": "discovery_blocked" if discovery_error else "complete",
@@ -495,6 +510,7 @@ def run_superfris_pass(db: Session) -> dict:
             if record is not None:
                 record.status = "error"
                 record.result = type(exc).__name__[:100]
+                record.finished_at = datetime.utcnow()
                 db.commit()
             logger.exception("Superfris research failed")
             return {"status": "error", "error_type": type(exc).__name__, "sent": 0}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -111,6 +112,21 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
 
     if not settings.automated_outreach_enabled:
         make_new_drafts()
+
+    if os.getenv("LEADS_DISCOVERY_PROVIDER", "").lower() == "chatgpt":
+        # Research is performed by ChatGPT, outside this Render worker.
+        # Consume only verified leads imported into today's AUTO campaigns.
+        # The Zoho draft saver itself enforces OAuth, source checks and caps.
+        start, end, _ = _today_utc_bounds()
+        reserved = _today_draft_count(db, start, end)
+        return {
+            "ok": True, "date": day_iso, "status": "chatgpt_leads_ingest_mode",
+            "zoho_connected": zoho_mail.connected(db),
+            "zoho_drafts_created": drafts_created,
+            "zoho_drafts_reserved_today": reserved,
+            "zoho_draft_attempts_failed": draft_failures,
+            "sent_this_run": 0,
+        }
 
     sent_now, failed_now = _send_candidates(
         db,

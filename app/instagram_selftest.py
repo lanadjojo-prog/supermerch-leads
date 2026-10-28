@@ -128,6 +128,29 @@ class InstagramSmoke(unittest.TestCase):
         finally:
             client.close()
 
+    def test_large_inventory_keeps_imported_account_first(self):
+        # A mailing-list profile at position >1000 must outrank old accounts.
+        bulk = [InstagramProspect(username=f"oldclub{i}", lead_id=1,
+                                  source_url="https://club.example.org")
+                for i in range(1005)]
+        bulk.append(InstagramProspect(username="newpriorityclub", lead_id=1,
+                                     source_url="https://club.example.org"))
+        self.db.add_all(bulk)
+        self.db.commit()
+        called = []
+        class FakeClient:
+            def verify(self): pass
+            def media(self, username):
+                called.append(username)
+                return []
+            def like(self, media_id):
+                raise AssertionError("Smoke test must not issue likes")
+        with patch.object(ig, "DAILY_ACCOUNTS_LIMIT", 1), \
+             patch.object(priority, "priority_usernames", return_value={"newpriorityclub"}):
+            result = ig.engage(self.db, FakeClient(), NOW)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(called, ["newpriorityclub"])
+
     def test_csv_rejects_invalid_files(self):
         with self.assertRaises(ValueError):
             priority.parse_mailing_csv(b"onbekend,zonder-website\nA,B\n")

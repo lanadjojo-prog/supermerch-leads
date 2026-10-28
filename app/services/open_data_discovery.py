@@ -39,6 +39,7 @@ CITIES = {
     "haarlem": (52.388, 4.647), "dordrecht": (51.813, 4.690),
 }
 ENDPOINTS = ("https://overpass.private.coffee/api/interpreter",
+             "https://lz4.overpass-api.de/api/interpreter",
              "https://overpass-api.de/api/interpreter")
 BLOCKED_HOSTS = {
     "facebook.com", "instagram.com", "linkedin.com", "x.com", "twitter.com",

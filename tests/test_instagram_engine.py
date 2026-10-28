@@ -174,10 +174,10 @@ def test_connecting_meta_after_discovery_starts_once_in_same_hour(db,monkeypatch
 def test_mailing_csv_import_is_deduplicated_and_no_email_is_stored(db):
     from app.models import ChatCommand
     from app.services.instagram_priority import import_mailing_csv, priority_counts
-    payload = ("Bedrijfsnaam;E-mail;Website\\n"
-               "Nieuwe club;directie@newclub.nl;https://newclub.nl\\n"
-               "Nieuwe club;contact@newclub.nl;https://newclub.nl\\n"
-               "Privé persoon;persoon@gmail.com;\\n").encode()
+    payload = ("Bedrijfsnaam;E-mail;Website\n"
+               "Nieuwe club;directie@newclub.nl;https://newclub.nl\n"
+               "Nieuwe club;contact@newclub.nl;https://newclub.nl\n"
+               "Privé persoon;persoon@gmail.com;\n").encode()
     first = import_mailing_csv(db, payload)
     assert first == {'toegevoegd':1,'al_bekend':0,'overgeslagen':1,'totaal_uniek':1}
     assert import_mailing_csv(db, payload)['al_bekend'] == 1
@@ -191,7 +191,7 @@ def test_mailing_csv_import_is_deduplicated_and_no_email_is_stored(db):
 def test_priority_mailing_list_scans_before_regular_leads(db, monkeypatch):
     from app.models import ChatCommand
     from app.services import instagram_priority as priority
-    priority.import_mailing_csv(db, b'bedrijfsnaam,website\\nMijn club,https://newclub.nl\\n')
+    priority.import_mailing_csv(db, b'bedrijfsnaam,website\nMijn club,https://newclub.nl\n')
     visited = []
     def crawl(url):
         visited.append(url)
@@ -217,7 +217,7 @@ def test_engagement_prefers_imported_account_even_if_newer(db, monkeypatch):
     import json
     from app.services import instagram_priority as priority
     from app.models import Lead
-    priority.import_mailing_csv(db, b'company,domain\\nNieuwe club,newclub.nl\\n')
+    priority.import_mailing_csv(db, b'company,domain\nNieuwe club,newclub.nl\n')
     target = db.scalar(select(ChatCommand).where(ChatCommand.action=='instagram_priority'))
     target.status = 'matched'
     value = json.loads(target.result)

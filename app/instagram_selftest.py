@@ -183,7 +183,7 @@ class InstagramSmoke(unittest.TestCase):
         self.assertEqual(runs[0].status, "complete")
 
     def test_priority_queue_blocks_organic_likes(self):
-        priority.import_mailing_csv(self.db, b"website\\nhttps://club2.example.org\\n")
+        priority.import_mailing_csv(self.db, b"website\nhttps://club2.example.org\n")
         self.db.add(InstagramProspect(username="organicclub", lead_id=1,
                                       source_url="https://club.example.org"))
         self.db.commit()

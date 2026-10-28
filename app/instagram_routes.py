@@ -1,10 +1,12 @@
 """Private Instagram prospect dashboard and mailing-list upload."""
 import json
 import logging
+import os
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .auth import require_basic_auth
 from .config import settings
@@ -13,7 +15,7 @@ from .main_helpers import templates
 from .models import ChatCommand, InstagramAction, InstagramProspect
 from .services.instagram_engine import (
     DAILY_ACCOUNTS_LIMIT, DAILY_LIMIT, PER_ACCOUNT,
-    connection_ready, discover, enabled, paused,
+    _today_start_utc, connection_ready, discover, enabled, paused,
 )
 from .services.instagram_priority import import_mailing_csv, priority_counts
 
@@ -36,7 +38,24 @@ def dashboard(request: Request):
                           "domain": data.get("domain", ""),
                           "username": data.get("username", ""),
                           "status": entry.status})
+        local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+        day = local.date().isoformat()
+        daily_start = local.replace(hour=9, minute=0, second=0, microsecond=0)
+        if local >= daily_start:
+            daily_start += timedelta(days=1)
+        scanned_today = db.scalar(select(func.count(ChatCommand.id)).where(
+            ChatCommand.action == "instagram_priority_scan",
+            ChatCommand.created_at >= _today_start_utc()
+        )) or 0
+        likes_today = db.scalar(select(func.count(InstagramAction.id)).where(
+            InstagramAction.status == "liked",
+            InstagramAction.day_slot.like(f"{day}:%")
+        )) or 0
         return templates.TemplateResponse(request, "instagram.html", {
+            "today_scanned": scanned_today,
+            "today_likes": likes_today,
+            "next_scheduled": daily_start.strftime("%d-%m-%Y %H:%M"),
+            "schedule_start_date": os.getenv("INSTAGRAM_DAILY_NOT_BEFORE", ""),
             "app_name": settings.app_name,
             "enabled": enabled(), "connected": connection_ready(), "paused": paused(db),
             "daily_like_limit": DAILY_LIMIT, "per_account": PER_ACCOUNT,

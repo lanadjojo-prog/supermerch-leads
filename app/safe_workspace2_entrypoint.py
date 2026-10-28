@@ -452,6 +452,30 @@ def main():
         if not run_selftests():
             print("INSTAGRAM_STARTUP_ABORTED: smoke tests failed; no external likes or mail sent.", flush=True)
             sys.exit(1)
+    if os.environ.get("INSTAGRAM_READONLY_CHECK_ON_STARTUP", "false").lower() == "true":
+        # An authenticated GET against Meta and a public-company website read:
+        # never call MetaClient.like(), never send messages, never write leads.
+        from app.services.instagram_engine import MetaClient, connection_ready
+        from app.services.crawler import crawl_website
+        if connection_ready():
+            client = None
+            try:
+                client = MetaClient()
+                client.verify()
+                media = client.media("stichting_kielegat")
+                print(f"INSTAGRAM_META_READONLY_OK account_verified=1 media_visible={len(media)} likes=0", flush=True)
+            except Exception as exc:
+                print(f"INSTAGRAM_META_READONLY_FAIL category={type(exc).__name__} likes=0", flush=True)
+            finally:
+                if client:
+                    client.close()
+        else:
+            print("INSTAGRAM_META_READONLY_UNAVAILABLE credentials_missing_or_invalid_format likes=0", flush=True)
+        try:
+            website = crawl_website("https://web.kielegat.nl/evenement/elluf-elluf-2026/")
+            print(f"INSTAGRAM_WEBSITE_READONLY pages={len(website.pages)} handles={len(website.instagram_profiles)} likes=0", flush=True)
+        except Exception as exc:
+            print(f"INSTAGRAM_WEBSITE_READONLY_FAIL category={type(exc).__name__}", flush=True)
     print("Workspace 2 prerequisites present. Starting app; discovery_enabled=" + str(discovery_enabled) + "; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [

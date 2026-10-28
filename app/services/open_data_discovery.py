@@ -190,15 +190,30 @@ def discover_open_data(query: str, region: str, limit: int = 12, *,
 
 def discover_businesses(query: str, region: str, limit: int = 12, *,
                         purpose: str = "merch", niche: str = "") -> list[DiscoveredCompany]:
-    """Use sourced OpenAI web search for SuperMerch, never silently use Overpass.
+    """Discover genuine company websites, with an optional free OSM-only mode.
 
-    Superfris remains on its previously configured provider. A missing API key
-    is a visible failure, not a falsely successful zero-lead run.
+    LEADS_DISCOVERY_PROVIDER=open_data avoids paid AI calls altogether.
+    The 'auto' mode falls back only when paid discovery cannot be used,
+    not when a genuine search returns zero verified results.
+    All contacts must still be independently verified on official websites.
     """
-    if purpose in {"merch", "design"}:
-        # Both brands now use independently source-checked OpenAI web search.
-        # Never silently fall back to overloaded OSM/Overpass sources.
-        if not settings.openai_api_key.strip():
-            raise DiscoveryError("openai_discovery_api_key_missing")
+    import os
+    if purpose not in {"merch", "design"}:
+        raise ValueError("Unsupported discovery purpose")
+    provider = os.getenv("LEADS_DISCOVERY_PROVIDER", "auto").strip().lower()
+    if provider not in {"auto", "openai", "open_data"}:
+        raise ValueError("Invalid LEADS_DISCOVERY_PROVIDER")
+
+    if provider == "open_data" or (provider == "auto" and not settings.openai_api_key.strip()):
+        return discover_open_data(query, region, limit, purpose=purpose, niche=niche)
+    try:
         return discover_openai(query, region, limit, purpose=purpose)
-    raise ValueError("Unsupported discovery purpose")
+    except DiscoveryError as exc:
+        error = str(exc)
+        depleted = ("insufficient_quota" in error or
+                    "openai_discovery_api_key_missing" in error or
+                    "invalid_api_key" in error)
+        if provider != "auto" or not depleted:
+            raise
+        logger.warning("Paid source unavailable (%s); using public OSM discovery", error)
+        return discover_open_data(query, region, limit, purpose=purpose, niche=niche)

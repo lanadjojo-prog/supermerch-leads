@@ -261,21 +261,33 @@ def engage(db, client, now):
         return {"status": "paused", "likes": count, "reason": reason}
 
 
+def _daily_due(now=None):
+    """Only one local-calendar daily run, starting at 09:00 Amsterdam time.
+
+    Health wake is the fallback when a free Render instance sleeps through 09:00.
+    INSTAGRAM_DAILY_NOT_BEFORE can activate the new schedule on a future date.
+    """
+    now = now or datetime.now(timezone.utc)
+    local = now.astimezone(settings.local_timezone)
+    start_date = os.getenv("INSTAGRAM_DAILY_NOT_BEFORE", "").strip()
+    if start_date and local.date().isoformat() < start_date:
+        return False
+    return local.hour >= 9
+
+
 def run_background():
     if not enabled():
         return
     now = datetime.now(timezone.utc)
-    local = now.astimezone(settings.local_timezone)
-    if not 9 <= local.hour < 19:
+    if not _daily_due(now):
         return
+    local = now.astimezone(settings.local_timezone)
     engagement_enabled = (connection_ready() and
         os.getenv("INSTAGRAM_LIKES_ENABLED", "false").lower() == "true")
-    phase = "engagement" if engagement_enabled else "discovery"
     with SessionLocal() as db:
-        # Connecting Meta must be able to start within an hour in which a
-        # discovery-only pass already completed. Account/media claims and
-        # daily reservations still prevent duplicate engagement.
-        slot = claim(db, f"instagram-hour-{local:%Y-%m-%d-%H}-{phase}", "instagram_run")
+        # Shared durable date lock: restart, health wake or concurrent threads
+        # cannot run the 50-site daily batch more than once.
+        slot = claim(db, f"instagram-day-{local:%Y-%m-%d}", "instagram_run")
         if slot is None:
             return
         try:
@@ -296,6 +308,25 @@ def run_background():
             slot.result = "Instagram-run mislukt; controleer de uitvoering."
         slot.finished_at = datetime.utcnow()
         db.commit()
+
+
+def run_instagram_daily_scheduler(stop_event):
+    """Fire at 09:00 local time, including DST transitions.
+
+    Free Render can sleep; /health runs the same idempotent daily check
+    when the service wakes, so the queue still resumes on that date.
+    """
+    while not stop_event.is_set():
+        local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+        next_start = local.replace(hour=9, minute=0, second=0, microsecond=0)
+        if local >= next_start:
+            next_start += timedelta(days=1)
+        seconds = max(0.01, (
+            next_start.astimezone(timezone.utc) - datetime.now(timezone.utc)
+        ).total_seconds())
+        if stop_event.wait(seconds):
+            break
+        run_background()
 
 
 def status_summary():

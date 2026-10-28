@@ -87,3 +87,105 @@ def scan(background_tasks: BackgroundTasks):
     # Scannen is alleen lezen van publieke bedrijfssites; dit endpoint liked of DM't nooit.
     background_tasks.add_task(_manual_discovery)
     return RedirectResponse("/instagram/?scan=started", status_code=303)
+
+
+@router.get("/internal/system-map")
+def private_system_map_status(request: Request):
+    """Read-only metrics for authenticated SuperMerch Operations; no PII or tokens."""
+    from datetime import datetime, timezone
+    from hmac import compare_digest
+    from sqlalchemy import func
+    from .models import Lead, MailIntegration
+    from .services.outreach_delivery import _today_utc_bounds, sent_today
+
+    expected = __import__("os").environ.get("SYSTEM_MAP_BRIDGE_TOKEN", "")
+    supplied = request.headers.get("X-System-Map-Token", "")
+    if len(expected) < 40 or not compare_digest(supplied, expected):
+        raise HTTPException(401, "Unauthorized")
+
+    from .services.instagram_engine import (
+        status_summary, DAILY_LIMIT, DAILY_ACCOUNTS_LIMIT,
+    )
+    now = datetime.now(timezone.utc)
+    today = now.astimezone(settings.local_timezone).date().isoformat()
+    start, end = _today_utc_bounds()
+    def count(db, model, *conditions):
+        return int(db.scalar(select(func.count(model.id)).where(*conditions)) or 0)
+
+    with SessionLocal() as db:
+        leads_today = count(db, Lead, Lead.created_at >= start, Lead.created_at < end)
+        account_claims = count(db, ChatCommand,
+            ChatCommand.action == "instagram_engagement",
+            ChatCommand.created_at >= start, ChatCommand.created_at < end)
+        instagram_found = count(db, InstagramProspect,
+            InstagramProspect.created_at >= start,
+            InstagramProspect.created_at < end)
+        likes_today = count(db, InstagramAction,
+            InstagramAction.status == "liked",
+            InstagramAction.day_slot.like(today + ":%"))
+        mail_sends = int(sent_today(db))
+        mailbox_saved = bool(db.scalar(select(MailIntegration.id).where(
+            MailIntegration.provider == "zoho")))
+        insta = status_summary()
+        automation = bool(settings.automation_enabled)
+        insta_enabled = bool(insta.get("discovery_enabled"))
+        meta_connected = bool(insta.get("meta_configured"))
+        likes_enabled = bool(insta.get("likes_enabled"))
+        insta_paused = bool(insta.get("paused"))
+        latest_error = insta.get("last_run_status") == "error"
+        if not insta_enabled:
+            insta_state = "idle"
+            insta_msg = "Crawlen bewust uitgeschakeld"
+        elif insta_paused or latest_error:
+            insta_state = "error"
+            insta_msg = "Instagram-engagement gepauzeerd of laatste run mislukt"
+        elif not meta_connected or not likes_enabled:
+            insta_state = "warning"
+            insta_msg = "Discovery beschikbaar; Meta-likes niet actief"
+        else:
+            insta_state = "ok"
+            insta_msg = "Instagram-scanner actief; laatste run: " + str(insta.get("last_run_status"))
+        lead_state = "ok" if automation else "idle"
+        lead_msg = "Dagelijkse leadautomatisering ingeschakeld" if automation else "Automatische lead-outreach staat bewust uit"
+        if not mailbox_saved:
+            email_state = "warning"
+            email_msg = "Geen gekoppelde Zoho-mailbox gevonden"
+        elif not automation:
+            email_state = "idle"
+            email_msg = "Zoho-mailbox opgeslagen; automatische acquisitiemails uit"
+        else:
+            email_state = "warning"
+            email_msg = "Zoho-mailbox opgeslagen; bezorging niet end-to-end getest"
+        db_url = str(settings.database_url or "")
+        neon = ".neon.tech" in db_url
+        return {
+            "ok": True,
+            "checked_at": now.isoformat(),
+            "services": {
+                "leads": {"status": lead_state, "message": lead_msg,
+                          "daily": {"Nieuwe leads vandaag": leads_today}},
+                "instagram": {"status": insta_state, "message": insta_msg,
+                              "daily": {"Accounts gevonden": instagram_found,
+                                        "Accounts opgepakt": account_claims,
+                                        "Likes bevestigd": likes_today}},
+                "email": {"status": email_state, "message": email_msg,
+                          "daily": {"Verzonden prospectmails": mail_sends}},
+                "neon": {"status": "ok" if neon else "warning",
+                         "message": "Neon PostgreSQL-query succesvol" if neon
+                                    else "Database bereikbaar, provider niet Neon"},
+            },
+            "tasks": [
+                {"name": "Nieuwe leads", "count": leads_today,
+                 "target": int(settings.auto_search_target),
+                 "description": "Nieuwe leadrecords, vandaag (niet automatisch gekwalificeerd)"},
+                {"name": "Instagram-accounts", "count": account_claims,
+                 "target": DAILY_ACCOUNTS_LIMIT,
+                 "description": "Opgepakte accounts; maximum, geen verplicht dagdoel"},
+                {"name": "Instagram-likes", "count": likes_today,
+                 "target": DAILY_LIMIT,
+                 "description": "Door Meta bevestigde likes; daglimiet"},
+                {"name": "E-mails verstuurd", "count": mail_sends,
+                 "target": int(settings.daily_send_target),
+                 "description": "Bevestigde prospectmails; daglimiet, geen verplicht doel"}
+            ],
+        }

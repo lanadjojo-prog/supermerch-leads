@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from .auth import require_basic_auth
+from .auth import require_basic_auth, sso_router, set_remember_cookie
 from .chat_api import router as chat_api_router
 from .tender_routes import router as tender_router
 from .instagram_routes import router as instagram_router
@@ -159,6 +159,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+@app.middleware("http")
+async def remember_admin_login(request: Request, call_next):
+    """Persistent browser login; never gives anonymous access to private endpoints."""
+    response = await call_next(request)
+    if getattr(request.state, "sm_basic_authenticated", False) and response.status_code < 400:
+        set_remember_cookie(response)
+    return response
+
+app.include_router(sso_router)
 app.include_router(chat_api_router)
 app.include_router(tender_router)
 app.include_router(instagram_router)

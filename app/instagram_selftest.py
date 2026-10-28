@@ -195,6 +195,38 @@ class InstagramSmoke(unittest.TestCase):
         self.assertEqual(result["status"], "complete")
         self.assertEqual(result["likes"], 0)
 
+    def test_meta_invalid_profile_skips_without_stopping_following_accounts(self):
+        self.db.add_all([
+            InstagramProspect(username="invalidclub", lead_id=1, source_url="https://club.example.org"),
+            InstagramProspect(username="validclub", lead_id=1, source_url="https://club.example.org"),
+        ])
+        self.db.commit()
+        visited = []
+        class FakeMeta:
+            def verify(self): pass
+            def media(self, username):
+                visited.append(username)
+                if username == "invalidclub":
+                    raise ig.MetaError("Meta API geweigerd (HTTP 400, code 110).", code=110)
+                return []
+            def like(self, media_id):
+                raise AssertionError("No likes during smoke test")
+        from app.services import instagram_priority as priority
+        with patch.object(priority, "priority_usernames",
+                          return_value={"invalidclub", "validclub"}):
+            result = ig.engage(self.db, FakeMeta(), NOW)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(visited, ["invalidclub", "validclub"])
+        self.assertEqual(self.db.scalar(select(InstagramProspect).where(
+            InstagramProspect.username == "invalidclub")).status, "unavailable")
+        self.assertFalse(ig.paused(self.db))
+
+    def test_meta_pause_rearms_after_safe_read_only_recovery(self):
+        ig.pause(self.db, "Meta API geweigerd (HTTP 400, code 110).")
+        self.assertFalse(ig.paused(self.db))
+        ig.pause(self.db, "Meta API geweigerd (HTTP 400, code 190).")
+        self.assertTrue(ig.paused(self.db))
+
     def test_csv_rejects_invalid_files(self):
         with self.assertRaises(ValueError):
             priority.parse_mailing_csv(b"onbekend,zonder-website\nA,B\n")

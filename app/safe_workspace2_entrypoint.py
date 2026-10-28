@@ -23,9 +23,19 @@ def _require_postgres_tls():
     from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
     parsed = urlsplit(url)
     params = parse_qsl(parsed.query, keep_blank_values=True)
-    if any(key == "sslmode" for key, _ in params):
-        return
-    params.append(("sslmode", "require"))
+    if not any(key == "sslmode" for key, _ in params):
+        params.append(("sslmode", "require"))
+    # Render's IPv6 route is unavailable. Preserve the hostname for TLS/SNI,
+    # while letting libpq connect over a freshly resolved IPv4 address.
+    if (parsed.hostname or "").endswith(".neon.tech") and not any(key == "hostaddr" for key, _ in params):
+        import socket
+        try:
+            addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 5432,
+                                           family=socket.AF_INET, type=socket.SOCK_STREAM)
+            if addresses:
+                params.append(("hostaddr", addresses[0][4][0]))
+        except OSError:
+            pass  # Normal connection handling reports a sanitized error.
     os.environ["DATABASE_URL"] = urlunsplit(parsed._replace(query=urlencode(params)))
 
 

@@ -6,9 +6,31 @@
 <h2>Status</h2>
 <p>Zoeken: <strong>{{ 'ingeschakeld' if enabled else 'uitgeschakeld' }}</strong> · Meta-configuratie: <strong>{{ 'ingevuld; live toegang nog te verifiëren' if connected else 'nog niet gekoppeld' }}</strong></p>
 {% if paused %}<p><strong>Likes gepauzeerd na een fout. Controleer de Meta-koppeling voordat je de pauze laat opheffen.</strong></p>{% endif %}
-<p>Maximaal 10 likes per Nederlandse kalenderdag, 2 per account, op posts van maximaal 30 dagen oud. Een account wordt eenmaal verwerkt. Geen automatische berichten of volgacties.</p>
+<p>Maximaal {{ daily_like_limit }} likes per Nederlandse kalenderdag, {{ per_account }} per account en {{ daily_account_limit }} accounts per dag, op posts van maximaal 30 dagen oud. Een account wordt eenmaal verwerkt. Geen automatische berichten of volgacties.</p>
 {% if not connected %}<p>De browserlogin geldt alleen voor de browser. Automatische likes wachten op de officiële Meta-koppeling; gevonden accounts blijven hier bewaard.</p>{% endif %}
 </section>
+<section class="card">
+<h2>Mailinglijst eerst verwerken</h2>
+<p>Upload een CSV uit je mailinglijst. De crawler zoekt Instagram-profielen via de officiële bedrijfswebsites en behandelt deze bedrijven vóór de gewone leads. De import verstuurt geen mail of Instagram-bericht.</p>
+<p>Ondersteunde kolommen: <strong>bedrijfsnaam</strong> en <strong>website</strong> of <strong>e-mail</strong>. Komma- en puntkomma-CSV zijn toegestaan. Losse privé-adressen (zoals gmail.com) zonder bedrijfswebsite worden overgeslagen. Er worden geen e-mailadressen opgeslagen.</p>
+<form method="post" action="/instagram/import" enctype="multipart/form-data">
+  <label for="priority-file">CSV-bestand</label>
+  <input id="priority-file" type="file" name="file" accept=".csv,text/csv" required>
+  <button type="submit">Mailinglijst importeren</button>
+</form>
+{% if imported is not none %}<p><strong>Import klaar:</strong> {{ imported }} toegevoegd, {{ existing }} al bekend, {{ skipped }} zonder herkenbaar zakelijk domein.</p>{% endif %}
+<p><strong>Wachtrij:</strong> {{ priority_counts.wacht }} wachten · {{ priority_counts.gevonden }} gevonden · {{ priority_counts.niet_gevonden }} geen profiel op site · {{ priority_counts.mislukt }} niet bereikbaar.</p>
+<form method="post" action="/instagram/scan">
+  <button type="submit">Nu Instagram-accounts zoeken (zonder likes)</button>
+</form>
+{% if request.query_params.get('scan') %}<p>Scan gestart. Vernieuw de pagina voor de resultaten.</p>{% endif %}
+</section>
+<h2>Mailinglijst: zoekstatus</h2>
+<table><thead><tr><th>Bedrijf</th><th>Domein</th><th>Instagram</th><th>Status</th></tr></thead><tbody>
+{% for r in priority_rows %}
+<tr><td>{{ r.company }}</td><td>{{ r.domain }}</td><td>{% if r.username %}<a href="https://www.instagram.com/{{ r.username }}/" target="_blank" rel="noopener noreferrer">@{{ r.username }}</a>{% else %}—{% endif %}</td><td>{{ r.status }}</td></tr>
+{% else %}<tr><td colspan="4">Nog geen mailinglijst geïmporteerd.</td></tr>{% endfor %}
+</tbody></table>
 <h2>Gevonden accounts</h2>
 <table><thead><tr><th>Account</th><th>Herkomst</th><th>Status</th></tr></thead><tbody>
 {% for p in prospects %}<tr><td><a href="https://www.instagram.com/{{ p.username }}/" target="_blank" rel="noopener noreferrer">@{{ p.username }}</a></td><td><a href="/leads/{{ p.lead_id }}">Lead {{ p.lead_id }}</a> · <a href="{{ p.source_url }}" target="_blank" rel="noopener noreferrer">Bronwebsite</a></td><td>{{ p.status }}</td></tr>

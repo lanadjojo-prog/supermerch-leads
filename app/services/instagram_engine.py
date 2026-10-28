@@ -213,13 +213,19 @@ def run_background():
     local = now.astimezone(settings.local_timezone)
     if not 9 <= local.hour < 19:
         return
+    engagement_enabled = (connection_ready() and
+        os.getenv("INSTAGRAM_LIKES_ENABLED", "false").lower() == "true")
+    phase = "engagement" if engagement_enabled else "discovery"
     with SessionLocal() as db:
-        slot = claim(db, f"instagram-hour-{local:%Y-%m-%d-%H}", "instagram_run")
+        # Connecting Meta must be able to start within an hour in which a
+        # discovery-only pass already completed. Account/media claims and
+        # daily reservations still prevent duplicate engagement.
+        slot = claim(db, f"instagram-hour-{local:%Y-%m-%d-%H}-{phase}", "instagram_run")
         if slot is None:
             return
         try:
             result = discover(db)
-            if connection_ready() and os.getenv("INSTAGRAM_LIKES_ENABLED", "false").lower() == "true":
+            if engagement_enabled:
                 client = MetaClient()
                 try:
                     result.update(engage(db, client, now))

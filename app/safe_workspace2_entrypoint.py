@@ -46,6 +46,16 @@ def _safe_database_failure_reason(exc):
         return "hostname_not_resolvable_use_external_database_url"
     if any(term in msg for term in ("password authentication failed", "authentication failed for user")):
         return "database_password_or_user_rejected"
+    for term, category in (
+        ("channel binding", "database_channel_binding_error"),
+        ("unsupported startup parameter", "database_unsupported_startup_parameter"),
+        ("invalid connection option", "database_invalid_connection_option"),
+        ("endpoint id", "database_endpoint_routing_error"),
+        ("does not exist", "database_or_role_missing"),
+        ("timeout", "database_connection_timeout"),
+    ):
+        if term in msg:
+            return category
     if any(term in msg for term in ("connection timed out", "timeout expired", "operation timed out")):
         return "database_network_timeout_check_ip_allowlist"
     if "connection refused" in msg:

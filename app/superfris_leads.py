@@ -352,7 +352,7 @@ def _make_drafts(db: Session) -> int:
     if not quota:
         return 0
     candidates = db.scalars(select(SuperfrisLead).where(
-        SuperfrisLead.status == "ready",
+        SuperfrisLead.status.in_(("ready", "ready_ai")),
     ).order_by(SuperfrisLead.created_at, SuperfrisLead.id).limit(quota * 3)).all()
     made = 0
     attempted_this_pass = 0
@@ -372,13 +372,19 @@ def _make_drafts(db: Session) -> int:
             # Recompose only un-drafted, verified prospects, including existing
             # pending leads, so the trial starts without contacting anyone twice.
             variant = _variant_for_lead(lead.id)
-            lead.subject = _variant_subject(lead.company_name, variant)
-            lead.message = _compose_message(
-                lead.company_name, lead.region, lead.category,
-                next((offer for cat, _query, offer in CATEGORIES if cat == lead.category),
-                     "grafische vormgeving en promotiemateriaal"),
-                "", variant=variant,
-            )
+            if lead.status == "ready_ai":
+                # ChatGPT researched and supplied evidence-backed copy. Keep it.
+                # An empty or unverifiable draft is never silently generated.
+                if not (lead.subject or "").strip() or not (lead.message or "").strip():
+                    raise ValueError("AI-researched lead lacks subject or message")
+            else:
+                lead.subject = _variant_subject(lead.company_name, variant)
+                lead.message = _compose_message(
+                    lead.company_name, lead.region, lead.category,
+                    next((offer for cat, _query, offer in CATEGORIES if cat == lead.category),
+                         "grafische vormgeving en promotiemateriaal"),
+                    "", variant=variant,
+                )
             _save_strato_draft(lead.email, lead.subject, lead.message, lead_id=lead.id)
             logger.warning("Superfris concept saved variant=%s lead_id=%s sent=0", variant, lead.id)
         except Exception as exc:
@@ -519,6 +525,33 @@ def run_superfris_pass(db: Session) -> dict:
 
 
 
+def drain_verified_chatgpt_backlog(db: Session) -> dict:
+    """Save up to 30 already-researched drafts without hitting any search API.
+
+    Called only for a date-scoped user-requested catch-up. All writes are to
+    STRATO Drafts via IMAP; no SMTP or send endpoint is ever invoked. Existing
+    durable per-lead reservations prevent duplicate APPEND on restart.
+    """
+    if os.getenv("SUPERFRIS_ENABLED", "false").lower() not in ("1", "true", "yes", "on"):
+        return {"status": "disabled", "sent": 0}
+    local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
+    if not (9 <= local.hour < 19):
+        return {"status": "outside_window", "sent": 0}
+    if not _guard.acquire(blocking=False):
+        return {"status": "already_running", "sent": 0}
+    try:
+        saved = 0
+        for _ in range(6):
+            n = _make_drafts(db)
+            saved += n
+            if not n:
+                break
+        logger.warning("ChatGPT-sourced STRATO backlog saved=%s sent=0", saved)
+        return {"status": "complete", "saved": saved, "sent": 0}
+    finally:
+        _guard.release()
+
+
 def run_superfris_catchup_pass(db: Session, sequence: int) -> dict:
     """One safe extra research/draft pass for a user-requested catch-up.
 
@@ -595,7 +628,7 @@ def superfris_stats(db: Session) -> dict:
         "configured": os.getenv("SUPERFRIS_ENABLED", "false").lower() in ("1", "true", "yes", "on"),
         "mail_password_configured": bool(os.getenv("SUPERFRIS_STRATO_PASSWORD")),
         "pending_drafts": int(db.scalar(select(func.count(SuperfrisLead.id)).where(
-            SuperfrisLead.status == "ready"
+            SuperfrisLead.status.in_(("ready", "ready_ai"))
         )) or 0),
         "saved_drafts_total": int(db.scalar(select(func.count(SuperfrisDraftAttempt.id)).where(
             SuperfrisDraftAttempt.status == "saved"

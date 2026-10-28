@@ -83,6 +83,15 @@ async def lifespan(app: FastAPI):
         daemon=True,
     ).start()
 
+    # Run public-site discovery once at startup as well as on /health wake.
+    # The engagement toggle remains independent; discovery alone never likes.
+    if os.getenv("INSTAGRAM_CRAWLER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
+        threading.Thread(
+            target=run_instagram_background,
+            name="supermerch-instagram-startup",
+            daemon=True,
+        ).start()
+
     # Optional date-scoped catch-up run (drafts only). On any other day this
     # switch has no effect, so it cannot cause repeated catch-ups tomorrow.
     catchup_date = os.getenv("LEAD_CATCHUP_ON_STARTUP_DATE", "").strip()

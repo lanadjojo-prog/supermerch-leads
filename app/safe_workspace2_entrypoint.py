@@ -447,6 +447,11 @@ def main():
         _zoho_send_self_test()
     if os.environ.get("ZOHO_DRAFT_SELF_TEST", "").strip().lower() in ("1", "true", "yes"):
         _zoho_draft_self_test()
+    if os.environ.get("INSTAGRAM_SMOKE_TEST_ON_STARTUP", "false").lower() == "true":
+        from app.instagram_selftest import run_selftests
+        if not run_selftests():
+            print("INSTAGRAM_STARTUP_ABORTED: smoke tests failed; no external likes or mail sent.", flush=True)
+            sys.exit(1)
     print("Workspace 2 prerequisites present. Starting app; discovery_enabled=" + str(discovery_enabled) + "; outreach_enabled=" + str(outreach_enabled), flush=True)
     port = os.environ.get("PORT", "10000")
     os.execvp("gunicorn", [

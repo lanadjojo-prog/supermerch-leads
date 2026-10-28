@@ -20,7 +20,11 @@ from .auth import require_basic_auth
 from .chat_api import router as chat_api_router
 from .tender_routes import router as tender_router
 from .instagram_routes import router as instagram_router
-from .services.instagram_engine import run_background as run_instagram_background, status_summary as instagram_status_summary
+from .services.instagram_engine import (
+    run_background as run_instagram_background,
+    run_instagram_daily_scheduler,
+    status_summary as instagram_status_summary,
+)
 from .command_bridge import process_startup_command
 from .config import settings
 from .database import Base, SessionLocal, engine
@@ -132,6 +136,15 @@ async def lifespan(app: FastAPI):
         daemon=True,
     )
     scheduler_thread.start()
+    # Amsterdam-local 09:00 Instagram schedule. The DB daily lock also
+    # deduplicates the existing /health and startup catch-up triggers.
+    if os.getenv("INSTAGRAM_CRAWLER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
+        threading.Thread(
+            target=run_instagram_daily_scheduler,
+            args=(scheduler_stop,),
+            name="supermerch-instagram-daily-0900",
+            daemon=True,
+        ).start()
     if os.getenv("SUPERFRIS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
         threading.Thread(
             target=_run_superfris_periodic,

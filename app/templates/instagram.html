@@ -4,6 +4,12 @@
 <p>Nieuwe zakelijke accounts uit de websites van gekwalificeerde SuperMerch-leads.</p>
 <section class="card">
 <h2>Status</h2>
+<p><strong>Automatisch elke dag om 09:00 (Nederlandse tijd).</strong>
+Volgende geplande start: <strong>{{ next_scheduled }}</strong>.
+{% if schedule_start_date %}Activatie vanaf {{ schedule_start_date }}.{% endif %}
+Bij een slapende gratis Render-instantie start de ronde zodra /health de app weer wekt.</p>
+<p>Vandaag: <strong>{{ today_scanned }} / {{ daily_account_limit }}</strong> mailinglijstwebsites gecontroleerd
+· <strong>{{ today_likes }} / {{ daily_like_limit }}</strong> likes bevestigd.</p>
 <p>Zoeken: <strong>{{ 'ingeschakeld' if enabled else 'uitgeschakeld' }}</strong> · Meta-configuratie: <strong>{{ 'ingevuld; live toegang nog te verifiëren' if connected else 'nog niet gekoppeld' }}</strong></p>
 {% if paused %}<p><strong>Likes gepauzeerd na een fout. Controleer de Meta-koppeling voordat je de pauze laat opheffen.</strong></p>{% endif %}
 <p>Maximaal {{ daily_like_limit }} likes per Nederlandse kalenderdag, {{ per_account }} per account en {{ daily_account_limit }} accounts per dag, op posts van maximaal 30 dagen oud. Een account wordt eenmaal verwerkt. Geen automatische berichten of volgacties.</p>

@@ -8,7 +8,7 @@ import os
 import re
 import time
 from fastapi import APIRouter, Form, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from .config import settings
 
 sso_router = APIRouter()
@@ -102,3 +102,62 @@ def login_from_operations(ticket: str = Form(...)):
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
+
+
+# A regular login form also works in mobile browsers that do not show
+# HTTP Basic authentication prompts. It uses the same admin credentials.
+def _safe_next(value: str) -> str:
+    return value if value in ("/", "/integrations") else "/integrations"
+
+
+def _login_html(next_path: str, invalid: bool = False) -> HTMLResponse:
+    from html import escape
+    # Only a fixed, same-origin redirect path may be included in the form.
+    target = escape(_safe_next(next_path), quote=True)
+    error = '<p class="error" role="alert">Inloggegevens kloppen niet. Probeer het opnieuw.</p>' if invalid else ""
+    html = """<!doctype html>
+<html lang="nl"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SuperMerch — Inloggen</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,-apple-system,sans-serif}
+body{margin:0;min-height:100vh;background:#edf6fd;display:grid;place-items:center;padding:20px;box-sizing:border-box}
+main{width:min(100%,400px);background:white;border-radius:20px;padding:32px;box-shadow:0 15px 45px #102f4d12}
+h1{font-size:26px;margin:0 0 8px}p{color:#536276;line-height:1.5}label{display:block;margin:19px 0 6px;font-weight:650}
+input{width:100%;box-sizing:border-box;padding:13px;font:inherit;border:1px solid #b8c8d8;border-radius:10px}
+button{width:100%;background:#111;color:white;border:0;border-radius:10px;padding:15px;margin-top:24px;font:inherit;font-weight:650;cursor:pointer}
+.error{color:#a52626;font-weight:600}small{color:#57677a;display:block;margin-top:18px}
+</style></head><body><main>
+<h1>SuperMerch Leadmachine</h1><p>Log in om Zoho Mail opnieuw te koppelen en je concepten klaar te zetten.</p>
+""" + error + """
+<form action="/login" method="post">
+<input type="hidden" name="next" value='""" + target + """'/>
+<label for="user">Gebruikersnaam</label><input id="user" name="username" autocomplete="username" required/>
+<label for="pass">Wachtwoord</label><input id="pass" type="password" name="password" autocomplete="current-password" required/>
+<button type="submit">Inloggen en verdergaan</button></form>
+<small>De inloggegevens zijn dezelfde als voor je Leadmachine. Er worden geen mails verstuurd.</small>
+</main></body></html>"""
+    response = HTMLResponse(html, status_code=401 if invalid else 200)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@sso_router.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, next: str = "/integrations"):
+    target = _safe_next(next)
+    if cookie_is_valid(request.cookies.get(SESSION_COOKIE, "")):
+        return RedirectResponse(url=target, status_code=303)
+    return _login_html(target)
+
+
+@sso_router.post("/login")
+def login_with_password(username: str = Form(...), password: str = Form(...), next: str = Form("/integrations")):
+    if (settings.app_password and settings.app_password != "change-me" and
+        hmac.compare_digest(username, settings.app_username) and
+        hmac.compare_digest(password, settings.app_password)):
+        response = RedirectResponse(url=_safe_next(next), status_code=303)
+        set_remember_cookie(response)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    return _login_html(next, invalid=True)

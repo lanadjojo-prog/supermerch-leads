@@ -105,6 +105,13 @@ def import_mailing_csv(db, content: bytes):
             # Bij een nieuwe import mag een eerdere mislukte/no-match scan opnieuw.
             if row.status in {"not_found", "failed"}:
                 row.status = "queued"
+            if row.status == "matched":
+                try:
+                    previous = json.loads(row.result or "{}")
+                    target["username"] = previous.get("username", "")
+                    target["source_url"] = previous.get("source_url", "")
+                except (ValueError, TypeError):
+                    pass
             row.result = json.dumps(target, ensure_ascii=False)
             continue
         db.add(ChatCommand(command_id=key, action="instagram_priority",
@@ -173,7 +180,8 @@ def discover_priority(db, budget, claim):
         ChatCommand.action == "instagram_priority",
         ChatCommand.status == "queued").order_by(ChatCommand.id).limit(budget)).all()
     for row in rows:
-        if not claim(db, "instagram-priority-scan-" + str(row.id), "instagram_priority_scan"):
+        day = datetime.utcnow().date().isoformat()
+        if not claim(db, f"instagram-priority-scan-{row.id}-{day}", "instagram_priority_scan"):
             continue
         checked += 1
         try:

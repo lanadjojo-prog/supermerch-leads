@@ -75,3 +75,17 @@ def test_failed_connection_never_echoes_credentials(replacement, monkeypatch, ca
     monkeypatch.setattr(psycopg, "connect", fail)
     assert "connection unavailable" in boot._existing_database_preflight()
     assert "secret-do-not-print" not in capsys.readouterr().out
+
+
+def test_neon_uses_ipv4_without_replacing_tls_hostname(monkeypatch):
+    import os
+    import socket
+    from urllib.parse import urlsplit, parse_qs
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@ep-example.neon.tech/replacement?sslmode=verify-full&channel_binding=require")
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *args, **kwargs: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", 5432))])
+    boot._require_postgres_tls()
+    parsed = urlsplit(os.environ["DATABASE_URL"])
+    assert parsed.hostname == "ep-example.neon.tech"
+    assert parse_qs(parsed.query) == {"sslmode": ["verify-full"],
+        "channel_binding": ["require"], "hostaddr": ["192.0.2.1"]}

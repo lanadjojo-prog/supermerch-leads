@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, time, timedelta, timezone
 from urllib.parse import urlparse
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -117,11 +117,22 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
         select(Lead)
         .join(Campaign)
         .where(
-            Campaign.name.like(f"AUTO {day} |%"),
-            Campaign.created_at >= start,
-            Campaign.created_at < end,
-            Lead.created_at >= start,
-            Lead.created_at < end,
+            or_(
+                and_(
+                    Campaign.name.like(f"AUTO {day} |%"),
+                    Campaign.created_at >= start,
+                    Campaign.created_at < end,
+                    Lead.created_at >= start,
+                    Lead.created_at < end,
+                ),
+                and_(
+                    # ChatGPT-sourced verified leads may have been researched
+                    # before a mailbox was relinked. Do not strand the backlog.
+                    Campaign.name.like("AUTO %"),
+                    Lead.source == "chatgpt_verified_site",
+                    Lead.created_at >= datetime.utcnow() - timedelta(days=30),
+                ),
+            ),
             Lead.status.in_(("ready_for_review", "possible")),
             Lead.email.is_not(None),
             Lead.email_source_url.is_not(None),

@@ -575,8 +575,14 @@ def approve_all_review(db: Session = Depends(get_db)):
     return RedirectResponse(f"/?message={quote_plus(message)}", status_code=303)
 
 
-@app.get("/integrations", response_class=HTMLResponse, dependencies=[Depends(auth)])
+@app.get("/integrations", response_class=HTMLResponse)
 def integrations(request: Request, db: Session = Depends(get_db)):
+    try:
+        require_basic_auth(request)
+    except HTTPException as exc:
+        if exc.status_code != 401:
+            raise
+        return RedirectResponse(url="/login?next=%2Fintegrations", status_code=303)
     integration = db.scalar(select(MailIntegration).where(MailIntegration.provider == "zoho"))
     return templates.TemplateResponse(request, "integrations.html", {"app_name": settings.app_name, "configured": zoho_mail.configured(), "connected": integration is not None, "integration": integration, "redirect_uri": f"{settings.app_base_url}/integrations/zoho/callback"})
 

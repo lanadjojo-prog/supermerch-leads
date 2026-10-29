@@ -174,7 +174,7 @@ def test_daily_run_never_repeats_when_meta_setting_changes(db,monkeypatch):
     assert len(discovered)==1
     from app.models import ChatCommand
     assert db.scalar(select(func.count(ChatCommand.id)).where(
-        ChatCommand.command_id=='instagram-day-2026-10-27')) == 1
+        ChatCommand.command_id=='instagram-hour-2026-10-27-13')) == 1
 
 
 def test_mailing_csv_import_is_deduplicated_and_no_email_is_stored(db):
@@ -207,7 +207,7 @@ def test_priority_mailing_list_scans_before_regular_leads(db, monkeypatch):
     monkeypatch.setattr(priority, 'crawl_website', crawl)
     monkeypatch.setattr(ig, 'crawl_website', lambda url: (_ for _ in ()).throw(
         AssertionError("Regular leads must wait for the imported list")))
-    monkeypatch.setattr(ig, 'DAILY_ACCOUNTS_LIMIT', 1)
+    monkeypatch.setattr(ig, 'DAILY_ACCOUNTS_LIMIT', 2)
     assert ig.discover(db) == {
         'websites_scanned': 1, 'accounts_found': 1, 'priority_websites_scanned': 1}
     assert visited == ['https://newclub.nl']

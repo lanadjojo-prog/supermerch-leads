@@ -11,7 +11,7 @@ import imaplib
 import logging
 import os
 import re
-import smtplib
+import httpx
 import ssl
 import threading
 import time
@@ -64,9 +64,11 @@ def _enabled() -> bool:
 
 
 def _network_allowed() -> bool:
-    # Render Free blocks SMTP 465. Do not consume reservations attempting it.
-    # Set only after moving the SMTP worker onto a network with outbound 465.
-    return os.getenv("SUPERFRIS_SMTP_NETWORK_ALLOWED", "false").strip().lower() in TRUTH
+    # HTTPS outbound works on Render Free. Require a domain-restricted Resend
+    # API key and confirmed sender-domain verification before consuming a send.
+    return bool(os.getenv("SUPERFRIS_RESEND_API_KEY", "").strip()) and (
+        os.getenv("SUPERFRIS_RESEND_DOMAIN_VERIFIED", "false").strip().lower() in TRUTH
+    )
 
 
 def _paused(db: Session) -> bool:
@@ -147,7 +149,7 @@ def status(db: Session) -> dict:
         "blocked_reason": (
             "sender_disabled" if not _enabled() else
             "manual_pause" if _paused(db) else
-            "smtp_465_unavailable_on_render_free" if not _network_allowed() else
+            "resend_domain_or_api_key_unavailable" if not _network_allowed() else
             None
         )
     }
@@ -275,17 +277,46 @@ def send_one(db: Session) -> dict:
             client.login(MAILBOX, pwd)
             msg, uid, sent_folder = _read_approved_strato_draft(client, lead)
             _append_optout(msg)
-            with smtplib.SMTP_SSL("smtp.strato.de", 465, timeout=25,
-                                  context=ssl.create_default_context()) as smtp:
-                smtp.login(MAILBOX, pwd)
-                refused = smtp.send_message(msg, from_addr=MAILBOX, to_addrs=[lead.email])
-                if refused:
-                    raise RuntimeError("SMTP_REJECTED_RECIPIENT")
-            # Mark success immediately upon SMTP's acceptance before IMAP cleanup.
+            # Send via Resend HTTPS rather than SMTP (blocked on Render Free).
+            # The exact approved STRATO draft remains the message source.
+            plain_part = msg.get_body(preferencelist=("plain",))
+            html_part = msg.get_body(preferencelist=("html",))
+            plain_body = plain_part.get_content() if plain_part else ""
+            html_body = html_part.get_content() if html_part else ""
+            if not plain_body.strip() and not html_body.strip():
+                raise ValueError("APPROVED_DRAFT_BODY_EMPTY")
+            payload = {
+                "from": "SuperFris <" + MAILBOX + ">",
+                "to": [lead.email],
+                "subject": str(msg["Subject"]),
+                "text": plain_body,
+                "reply_to": MAILBOX,
+            }
+            if html_body.strip():
+                payload["html"] = html_body
+            # Authorization was already verified and durably reserved above.
+            api_key = os.environ["SUPERFRIS_RESEND_API_KEY"]
+            with httpx.Client(timeout=30) as http:
+                response = http.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": "Bearer " + api_key,
+                        "Content-Type": "application/json",
+                        "Idempotency-Key": "superfris-" + str(lead_id),
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                receipt = response.json()
+            resend_id = str(receipt.get("id") or "")
+            if not resend_id:
+                raise RuntimeError("RESEND_RECEIPT_ID_MISSING")
+            # Mark success immediately upon the API accepting the message.
+            # Acceptance is not proof of delivery to the recipient inbox.
             row = db.get(SuperfrisSendAuthorization, lead_id)
             row.status = "sent"
             row.sent_at = datetime.utcnow()
-            row.message_id = str(msg.get("Message-ID", ""))[:255]
+            row.message_id = resend_id[:255]
             lead.status = "sent"
             db.commit()
             try:
@@ -295,8 +326,8 @@ def send_one(db: Session) -> dict:
                     raise RuntimeError("SENT_FOLDER_APPEND_FAILED")
                 client.uid("STORE", uid, "+FLAGS", r"(\Deleted)")
             except Exception as archive_exc:
-                logger.warning("Superfris SMTP accepted, IMAP Sent archival failed: %s", type(archive_exc).__name__)
-            logger.warning("Superfris approved mail SMTP accepted lead_id=%s sent=1", lead_id)
+                logger.warning("Superfris Resend accepted, IMAP Sent archival failed: %s", type(archive_exc).__name__)
+            logger.warning("Superfris approved mail accepted via Resend HTTPS lead_id=%s sent=1", lead_id)
             return {"status": "sent", "lead_id": lead_id}
         except Exception as exc:
             db.rollback()

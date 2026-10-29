@@ -281,10 +281,10 @@ def send_one(db: Session) -> dict:
             db.commit()
             try:
                 mailbox = '"' + sent_folder + '"'
-                code, _ = client.append(mailbox, r"(\\Seen)", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
+                code, _ = client.append(mailbox, r"(\Seen)", imaplib.Time2Internaldate(time.time()), msg.as_bytes())
                 if code != "OK":
                     raise RuntimeError("SENT_FOLDER_APPEND_FAILED")
-                client.uid("STORE", uid, "+FLAGS", r"(\\Deleted)")
+                client.uid("STORE", uid, "+FLAGS", r"(\Deleted)")
             except Exception as archive_exc:
                 logger.warning("Superfris SMTP accepted, IMAP Sent archival failed: %s", type(archive_exc).__name__)
             logger.warning("Superfris approved mail SMTP accepted lead_id=%s sent=1", lead_id)

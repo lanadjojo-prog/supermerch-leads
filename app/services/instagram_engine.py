@@ -99,11 +99,12 @@ def paused(db):
 
 
 class MetaError(RuntimeError):
-    def __init__(self, message, code=None, subcode=None, scope_hint="unknown"):
+    def __init__(self, message, code=None, subcode=None, scope_hint="unknown", safe_detail=""):
         super().__init__(message)
         self.code = code
         self.subcode = subcode
         self.scope_hint = scope_hint
+        self.safe_detail = safe_detail
 
 
 class MetaClient:
@@ -131,8 +132,17 @@ class MetaClient:
                 "pages_read_engagement", "instagram_business_basic",
                 "instagram_business_manage_comments"
             ) if scope in message), "unknown")
+            # Never expose an access token, URL or long account identifier.
+            # A short sanitized provider explanation helps distinguish
+            # missing permission from an unsupported endpoint.
+            detail = str(error.get("message", "")) if isinstance(error, dict) else ""
+            detail = re.sub(r"https?://\\S+", "[url]", detail)
+            detail = re.sub(r"(?i)(?:access_token|app_secret|client_secret|password)[^\\s,;]*", "[secret]", detail)
+            detail = re.sub(r"(?i)(?:EAA|IGAA)[A-Za-z0-9_-]{4,}", "[token]", detail)
+            detail = re.sub(r"\\b\\d{5,}\\b", "[id]", detail)
+            detail = detail.replace("\\n", " ")[:260]
             raise MetaError(f"Meta API geweigerd (HTTP {response.status_code}, code {code}).",
-                            code=code, subcode=subcode, scope_hint=scope_hint)
+                            code=code, subcode=subcode, scope_hint=scope_hint, safe_detail=detail)
         return data
 
     def verify(self):

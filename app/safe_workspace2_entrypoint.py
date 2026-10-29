@@ -466,6 +466,15 @@ def main():
             client = None
             try:
                 client = MetaClient()
+                token = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+                token_family = ("instagram_login" if token.startswith("IG")
+                    else "facebook_login" if token.startswith("EAA") else "unknown")
+                print(f"INSTAGRAM_META_TOKEN_FAMILY {token_family} likes=0", flush=True)
+                try:
+                    me = client.request("GET", "me", params={"fields": "id"})
+                    print(f"INSTAGRAM_META_SELF_OK same_as_configured_ig={str(me.get('id')) == client.user} likes=0", flush=True)
+                except Exception as exc:
+                    print(f"INSTAGRAM_META_SELF_FAIL code={getattr(exc, 'code', 'unknown')} likes=0", flush=True)
                 # Diagnose OAuth scopes and Page connection without disclosing
                 # account identifiers, tokens, emails or profile data.
                 from app.services.instagram_engine import MetaError
@@ -503,7 +512,7 @@ def main():
                 # status and numeric error code; never print raw responses.
                 from app.services.instagram_engine import MetaError
                 if isinstance(exc, MetaError):
-                    print(f"INSTAGRAM_META_READONLY_FAIL code={exc.code} reason={str(exc)} likes=0", flush=True)
+                    print(f"INSTAGRAM_META_READONLY_FAIL code={exc.code} subcode={exc.subcode} scope_hint={exc.scope_hint} reason={str(exc)} likes=0", flush=True)
                 else:
                     print(f"INSTAGRAM_META_READONLY_FAIL category={type(exc).__name__} likes=0", flush=True)
             finally:

@@ -1,8 +1,8 @@
-"""SuperFris opt-in / existing-customer SMTP sender.
+"""SuperFris sender for explicitly approved drafts.
 
-Separate from IMAP draft creation and from SuperMerch / Zoho. Never sends
-unsolicited discovered leads. A human must approve EACH recipient with an
-auditable legal basis; all attempts are reserved before the network call.
+Approval may be recorded per draft or for a bounded batch reviewed by the owner.
+Owner review is not represented as recipient consent. Attempts are reserved
+before network calls, with daily limits and duplicate-send protection.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 _guard = threading.Lock()
 MAX_SENDS_PER_DAY = 30
 SEND_INTERVAL_SECONDS = 10
-BASIS = {"consent", "existing_customer", "designated_business_offers"}
+BASIS = {"consent", "existing_customer", "designated_business_offers", "owner_reviewed_batch"}
 TRUTH = ("1", "yes", "true", "on")
 
 
@@ -114,6 +114,43 @@ def approve(db: Session, lead_id: int, basis: str, evidence: str) -> None:
             basis=basis, evidence=evidence.strip()[:2000]
         ))
     db.commit()
+
+
+def _register_reviewed_batch(db: Session) -> int:
+    """Record the owner's explicit review for an existing, bounded batch only.
+
+    The cutoff defaults to zero. Future leads and existing/revoked authorizations
+    are excluded. This records content approval, not recipient opt-in.
+    """
+    raw = os.getenv("SUPERFRIS_REVIEWED_BATCH_MAX_ID", "0").strip()
+    evidence = os.getenv("SUPERFRIS_REVIEWED_BATCH_EVIDENCE", "").strip()
+    if not raw.isdecimal() or int(raw) <= 0 or len(evidence) < 16:
+        return 0
+    if db.bind.dialect.name == "postgresql":
+        db.execute(sql_text("SELECT pg_advisory_xact_lock(29102610)"))
+    leads = db.scalars(select(SuperfrisLead).outerjoin(
+        SuperfrisSendAuthorization,
+        SuperfrisSendAuthorization.lead_id == SuperfrisLead.id
+    ).where(
+        SuperfrisLead.id <= int(raw),
+        SuperfrisLead.status == "drafted",
+        SuperfrisSendAuthorization.lead_id.is_(None),
+        select(SuperfrisDraftAttempt.id).where(
+            SuperfrisDraftAttempt.lead_id == SuperfrisLead.id,
+            SuperfrisDraftAttempt.status == "saved"
+        ).exists()
+    ).order_by(SuperfrisLead.id)).all()
+    for lead in leads:
+        db.add(SuperfrisSendAuthorization(
+            lead_id=lead.id,
+            basis="owner_reviewed_batch",
+            evidence=evidence[:2000],
+            status="approved"
+        ))
+    db.commit()
+    if leads:
+        logger.warning("Superfris owner-reviewed batch registered count=%s cutoff=%s", len(leads), raw)
+    return len(leads)
 
 
 def revoke(db: Session, lead_id: int) -> None:
@@ -356,6 +393,7 @@ def run_sender_loop(stop_event: threading.Event) -> None:
         if _enabled() and _network_allowed():
             db = SessionLocal()
             try:
+                _register_reviewed_batch(db)
                 result = send_one(db)
                 if result.get("status") in ("sent", "uncertain"):
                     logger.warning("Superfris sender result %s", result)

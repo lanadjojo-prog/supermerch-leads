@@ -14,7 +14,7 @@ from .database import SessionLocal
 from .main_helpers import templates
 from .models import ChatCommand, InstagramAction, InstagramProspect
 from .services.instagram_engine import (
-    DAILY_ACCOUNTS_LIMIT, DAILY_LIMIT, PER_ACCOUNT,
+    DAILY_ACCOUNTS_LIMIT, DAILY_LIMIT, DAILY_WEBSITE_SCAN_LIMIT, PER_ACCOUNT,
     _today_start_utc, connection_ready, discover, enabled, paused,
 )
 from .services.instagram_priority import import_mailing_csv, priority_counts
@@ -41,11 +41,16 @@ def dashboard(request: Request):
         local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
         day = local.date().isoformat()
         daily_start = local.replace(hour=9, minute=0, second=0, microsecond=0)
-        if local >= daily_start:
+        if 9 <= local.hour < 19:
+            daily_start = local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        elif local.hour >= 19:
             daily_start += timedelta(days=1)
         scanned_today = db.scalar(select(func.count(ChatCommand.id)).where(
             ChatCommand.action == "instagram_priority_scan",
             ChatCommand.created_at >= _today_start_utc()
+        )) or 0
+        found_today = db.scalar(select(func.count(InstagramProspect.id)).where(
+            InstagramProspect.created_at >= _today_start_utc()
         )) or 0
         likes_today = db.scalar(select(func.count(InstagramAction.id)).where(
             InstagramAction.status == "liked",
@@ -53,6 +58,8 @@ def dashboard(request: Request):
         )) or 0
         return templates.TemplateResponse(request, "instagram.html", {
             "today_scanned": scanned_today,
+            "today_found": found_today,
+            "daily_website_scan_limit": DAILY_WEBSITE_SCAN_LIMIT,
             "today_likes": likes_today,
             "next_scheduled": daily_start.strftime("%d-%m-%Y %H:%M"),
             "schedule_start_date": os.getenv("INSTAGRAM_DAILY_NOT_BEFORE", ""),

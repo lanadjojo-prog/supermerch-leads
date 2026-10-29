@@ -1,12 +1,23 @@
-name: Wake SuperMerch Lead Engine
+name: Wake SuperMerch Lead Engine (Workspace 2)
 
 on:
   workflow_dispatch:
+  schedule:
+    # Check hourly around the Amsterdam daytime window; the server itself
+    # enforces 09:00-20:00 Europe/Amsterdam, including summer/winter time.
+    - cron: '0 7-18 * * *'
+
+permissions:
+  contents: read
+
 jobs:
   wake:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Wake active Workspace 2 lead engine (drafts only)
+      - name: Wake Instagram discovery on active Workspace 2
         run: |
-          curl --fail --silent --show-error             --retry 3 --retry-delay 10 --retry-all-errors             --connect-timeout 20 --max-time 150             https://supermerch-leads-ws2.onrender.com/health
+          curl --fail --silent --show-error \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            --connect-timeout 20 --max-time 150 \
+            https://supermerch-leads-ws2.onrender.com/health

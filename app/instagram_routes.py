@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 
@@ -15,7 +15,7 @@ from .main_helpers import templates
 from .models import ChatCommand, InstagramAction, InstagramProspect
 from .services.instagram_engine import (
     DAILY_ACCOUNTS_LIMIT, DAILY_LIMIT, DAILY_WEBSITE_SCAN_LIMIT, PER_ACCOUNT,
-    _today_start_utc, connection_ready, discover, enabled, paused,
+    _today_start_utc, connection_ready, discover, enabled, paused, engage, MetaClient,
 )
 from .services.instagram_priority import import_mailing_csv, priority_counts
 
@@ -65,6 +65,7 @@ def dashboard(request: Request):
             "schedule_start_date": os.getenv("INSTAGRAM_DAILY_NOT_BEFORE", ""),
             "app_name": settings.app_name,
             "enabled": enabled(), "connected": connection_ready(), "paused": paused(db),
+            "likes_enabled": os.getenv("INSTAGRAM_LIKES_ENABLED", "false").lower() == "true",
             "daily_like_limit": DAILY_LIMIT, "per_account": PER_ACCOUNT,
             "daily_account_limit": DAILY_ACCOUNTS_LIMIT,
             "priority_counts": priority_counts(db), "priority_rows": queue,
@@ -113,6 +114,30 @@ def scan(background_tasks: BackgroundTasks):
     # Scannen is alleen lezen van publieke bedrijfssites; dit endpoint liked of DM't nooit.
     background_tasks.add_task(_manual_discovery)
     return RedirectResponse("/instagram/?scan=started", status_code=303)
+
+
+@router.post("/engage", dependencies=[Depends(require_basic_auth)])
+def manual_engagement(mode: str = Form(...)):
+    """Explicit operator test or continuation, sharing all daily caps and deduplication."""
+    from urllib.parse import urlencode
+    if mode not in ("test", "run"):
+        raise HTTPException(400, "Kies test of run.")
+    if not enabled() or not connection_ready():
+        raise HTTPException(409, "De crawler en Meta-koppeling moeten zijn ingesteld.")
+    if mode == "run" and os.getenv("INSTAGRAM_LIKES_ENABLED", "false").lower() != "true":
+        raise HTTPException(409, "Automatische likes staan nog uit; test eerst de koppeling.")
+    with SessionLocal() as db:
+        client = MetaClient()
+        try:
+            result = engage(db, client, datetime.now(timezone.utc),
+                            max_accounts=1 if mode == "test" else None)
+        finally:
+            client.close()
+    logger.info("Instagram operator mode=%s status=%s confirmed_likes=%s",
+                mode, result["status"], result["likes"])
+    return RedirectResponse("/instagram/?" + urlencode({
+        "engagement": result["status"], "likes": result["likes"],
+    }), status_code=303)
 
 
 @router.get("/internal/system-map")
@@ -215,3 +240,4 @@ def private_system_map_status(request: Request):
                  "description": "Bevestigde prospectmails; daglimiet, geen verplicht doel"}
             ],
         }
+

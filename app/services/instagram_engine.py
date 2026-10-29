@@ -236,7 +236,7 @@ def reserve_like(db, username, media, day):
     return None
 
 
-def engage(db, client, now):
+def engage(db, client, now, *, max_accounts=None):
     if paused(db):
         return {"status": "paused", "likes": 0}
     day = now.astimezone(settings.local_timezone).date().isoformat()
@@ -254,6 +254,8 @@ def engage(db, client, now):
         from .instagram_priority import priority_usernames
         preferred = priority_usernames(db)
         remaining_accounts = DAILY_ACCOUNTS_LIMIT - accounts_today
+        if max_accounts is not None:
+            remaining_accounts = min(remaining_accounts, max(0, int(max_accounts)))
         # Query priority handles directly: never lose a newly imported account
         # behind the first 1,000 old organic prospects.
         preferred_prospects = db.scalars(
@@ -409,3 +411,4 @@ def status_summary():
                 InstagramProspect.created_at >= _today_start_utc())) or 0,
             "last_run_status": latest.status if latest else "not_started",
         }
+

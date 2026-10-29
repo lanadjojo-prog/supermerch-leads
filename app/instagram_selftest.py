@@ -175,6 +175,28 @@ class InstagramSmoke(unittest.TestCase):
         self.assertEqual(result["status"], "complete")
         self.assertEqual(called, ["newpriorityclub"])
 
+    def test_operator_test_limits_one_account_and_continuation_deduplicates(self):
+        for name in ("testclubone", "testclubtwo"):
+            self.db.add(InstagramProspect(username=name, lead_id=1,
+                                         source_url="https://club.example.org"))
+        self.db.commit()
+        liked = []
+        class FakeClient:
+            def verify(self): pass
+            def media(self, username):
+                prefix = "1" if username == "testclubone" else "2"
+                return [{"id": prefix + str(i), "permalink": "https://www.instagram.com/p/Test" + prefix + str(i) + "/",
+                         "timestamp": NOW.isoformat()} for i in range(3)]
+            def like(self, media_id): liked.append(media_id)
+        result = ig.engage(self.db, FakeClient(), NOW, max_accounts=1)
+        self.assertEqual(result, {"status": "complete", "likes": 2})
+        self.assertEqual(len(liked), 2)
+        self.assertEqual(self.db.scalar(select(func.count(ChatCommand.id)).where(
+            ChatCommand.action == "instagram_engagement")), 1)
+        result = ig.engage(self.db, FakeClient(), NOW)
+        self.assertEqual(result, {"status": "complete", "likes": 2})
+        self.assertEqual(len(set(liked)), 4)
+
     def test_amsterdam_0900_in_winter_and_summer(self):
         with patch.dict("os.environ", {"INSTAGRAM_DAILY_NOT_BEFORE": "2026-10-29"}):
             self.assertFalse(ig._daily_due(datetime(2026, 10, 29, 7, 59, tzinfo=timezone.utc)))
@@ -269,3 +291,4 @@ def run_selftests():
 
 if __name__ == "__main__":
     sys.exit(0 if run_selftests() else 1)
+

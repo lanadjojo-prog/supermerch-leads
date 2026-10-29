@@ -11,10 +11,17 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 <p>Vandaag: <strong>{{ today_found }} / {{ daily_account_limit }}</strong> nieuwe Instagram-accounts gevonden
 · <strong>{{ today_scanned }} / {{ daily_website_scan_limit }}</strong> bedrijfswebsites gecontroleerd
 · <strong>{{ today_likes }} / {{ daily_like_limit }}</strong> likes bevestigd.</p>
-<p>Zoeken: <strong>{{ 'ingeschakeld' if enabled else 'uitgeschakeld' }}</strong> · Meta-configuratie: <strong>{{ 'ingevuld; live toegang nog te verifiëren' if connected else 'nog niet gekoppeld' }}</strong></p>
+<p>Zoeken: <strong>{{ 'ingeschakeld' if enabled else 'uitgeschakeld' }}</strong> · Meta-configuratie: <strong>{{ 'ingevuld' if connected else 'nog niet gekoppeld' }}</strong> · Automatische likes: <strong>{{ 'ingeschakeld' if likes_enabled else 'uitgeschakeld' }}</strong></p>
 {% if paused %}<p><strong>Likes gepauzeerd na een fout. Controleer de Meta-koppeling voordat je de pauze laat opheffen.</strong></p>{% endif %}
 <p>Maximaal {{ daily_like_limit }} likes per Nederlandse kalenderdag, {{ per_account }} per account en {{ daily_account_limit }} accounts per dag, op posts van maximaal 30 dagen oud. Een account wordt eenmaal verwerkt. Geen automatische berichten of volgacties.</p>
-<p><strong>Let op:</strong> Meta's officiële Instagram-API ondersteunt geen automatische likes op berichten van andere accounts. Het likedoel is een maximum/doelwaarde voor handmatige opvolging; de automatische functie blijft uitgeschakeld.</p>
+<p>Likes worden via de officiële Meta-API geplaatst. Alleen een succesvolle Meta-bevestiging telt mee. Ontoegankelijke accounts worden overgeslagen; bij een autorisatiefout of onbevestigde like pauzeert de verwerking.</p>
+{% if connected and enabled %}
+<form method="post" action="/instagram/engage">
+  <button type="submit" name="mode" value="test">Test Meta-likes (maximaal 1 account, 2 likes)</button>
+  {% if likes_enabled %}<button type="submit" name="mode" value="run">Nu likes verwerken binnen de daglimieten</button>{% endif %}
+</form>
+{% endif %}
+{% if request.query_params.get('engagement') %}<p><strong>Resultaat:</strong> {{ request.query_params.get('engagement') }} · {{ request.query_params.get('likes', '0') }} likes bevestigd in deze ronde. De details staan onder Acties.</p>{% endif %}
 {% if not connected %}<p>De browserlogin geldt alleen voor de browser. Automatische likes wachten op de officiële Meta-koppeling; gevonden accounts blijven hier bewaard.</p>{% endif %}
 </section>
 <section class="card">
@@ -52,3 +59,4 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 <h2>Laatste zoekrondes</h2>
 {% for run in runs %}<p>{{ run.created_at }} UTC · {{ run.status }} · {{ run.result or 'Bezig' }}</p>{% else %}<p>Nog niet gestart.</p>{% endfor %}
 {% endblock %}
+

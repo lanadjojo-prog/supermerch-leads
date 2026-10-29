@@ -466,6 +466,34 @@ def main():
             client = None
             try:
                 client = MetaClient()
+                # Diagnose OAuth scopes and Page connection without disclosing
+                # account identifiers, tokens, emails or profile data.
+                from app.services.instagram_engine import MetaError
+                try:
+                    permission_data = client.request("GET", "me/permissions")
+                    permissions = permission_data.get("data", [])
+                    granted = {
+                        str(item.get("permission", "")).lower()
+                        for item in permissions
+                        if isinstance(item, dict) and item.get("status") == "granted"
+                    }
+                    required = ("instagram_basic", "instagram_manage_engagement",
+                                "pages_show_list", "pages_read_engagement")
+                    print("INSTAGRAM_META_PERMISSIONS " +
+                          " ".join(f"{name}={name in granted}" for name in required) +
+                          f" returned={len(permissions)} likes=0", flush=True)
+                except MetaError as exc:
+                    print(f"INSTAGRAM_META_PERMISSIONS_UNAVAILABLE code={exc.code} likes=0", flush=True)
+                try:
+                    page_data = client.request("GET", "me/accounts",
+                        params={"fields": "id,instagram_business_account{id,username}", "limit": 100})
+                    pages = page_data.get("data", [])
+                    linked = [p.get("instagram_business_account", {}) for p in pages
+                              if isinstance(p, dict)]
+                    matches = sum(str(p.get("id", "")) == client.user for p in linked)
+                    print(f"INSTAGRAM_META_PAGES pages={len(pages)} ig_link_matches={matches} likes=0", flush=True)
+                except MetaError as exc:
+                    print(f"INSTAGRAM_META_PAGES_UNAVAILABLE code={exc.code} likes=0", flush=True)
                 client.verify()
                 print("INSTAGRAM_META_ACCOUNT_VERIFIED likes=0", flush=True)
                 media = client.media("stichting_kielegat")

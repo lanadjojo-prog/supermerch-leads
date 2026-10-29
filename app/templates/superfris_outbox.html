@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero compact">
+  <div>
+    <p class="eyebrow">SUPERFRIS · STRATO</p>
+    <h1>Concepten voor verzending</h1>
+    <p>Verzend uitsluitend zelf gecontroleerde concepten met een aantoonbare geldige grondslag. Zonder goedkeuring wordt niets verstuurd.</p>
+  </div>
+</section>
+{% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
+<section class="panel">
+  <h2>Wachtrij: elke 10 seconden · maximaal 30 pogingen per dag</h2>
+  <p>Automatisering: <strong>{{ "aan" if state.enabled else "uit" }}</strong>
+   · Verzonden vandaag: <strong>{{ state.sent_today }}</strong>
+   · Pogingen vandaag: <strong>{{ state.attempts_today }}/30</strong>
+   · Goedgekeurd wachtend: <strong>{{ state.approved_pending }}</strong></p>
+  {% if state.blocked_reason == "smtp_465_unavailable_on_render_free" %}
+  <div class="notice error">
+    <strong>SMTP nog geblokkeerd:</strong> de huidige Render Free-server blokkeert uitgaand SMTP-verkeer op poort 465.
+    De wachtrij is ingericht maar kan geen berichten verzenden. Verplaats de verzendmodule naar een geschikte SMTP-host of een betaald Render-plan voordat de netwerkblokkade wordt opgeheven.
+  </div>
+  {% elif state.blocked_reason == "manual_pause" %}
+  <div class="notice">De verzendwachtrij is handmatig gepauzeerd.</div>
+  {% endif %}
+  <p><strong>Let op:</strong> een openbaar e-mailadres is op zichzelf geen toestemming. Controleer en documenteer per ontvanger een geldige grondslag volgens de ACM-regels. Commerciële mails bevatten een eenvoudige afmeldmogelijkheid.</p>
+  <form method="post" action="/superfris/outbox/pause">
+    <input type="hidden" name="paused" value="{{ 'false' if state.paused else 'true' }}">
+    <button class="button ghost" type="submit">{{ "Verzendwachtrij hervatten" if state.paused else "Verzendwachtrij pauzeren" }}</button>
+  </form>
+</section>
+<section class="panel">
+  <h2>Opgeslagen STRATO-concepten</h2>
+  {% if not leads %}<p>Er zijn geen opgeslagen SuperFris-leadconcepten gevonden.</p>{% endif %}
+  {% for lead in leads %}
+  {% set decision = decisions.get(lead.id) %}
+  <div style="border-bottom:1px solid #ddd;padding:20px 0;">
+    <h3 style="margin:0 0 5px">{{ lead.company_name }} <small style="font-weight:normal">({{ lead.id }})</small></h3>
+    <p><strong>Aan:</strong> {{ lead.email }} · <strong>Onderwerp:</strong> {{ lead.subject }}</p>
+    <p><a href="{{ lead.website }}" target="_blank" rel="noopener noreferrer">Website</a> ·
+       <a href="{{ lead.email_source_url }}" target="_blank" rel="noopener noreferrer">Contactbron</a></p>
+    <details><summary>Bekijk voorbereide tekst</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{ lead.message }}</pre></details>
+    {% if decision %}
+    <p><strong>Verzendstatus:</strong> {{ decision.status }}
+      {% if decision.status == "uncertain" %}· Niet automatisch opnieuw proberen; controleer verzonden items.{% endif %}
+    </p>
+    {% else %}<p><strong>Verzendstatus:</strong> niet goedgekeurd</p>{% endif %}
+    {% if not decision or decision.status == "revoked" %}
+    {% if lead.status == "drafted" %}
+    <form method="post" action="/superfris/outbox/{{ lead.id }}/approve" style="max-width:680px">
+      <label for="basis-{{ lead.id }}">Reden dat deze ontvanger commerciële mail mag krijgen</label>
+      <select name="basis" id="basis-{{ lead.id }}" required style="display:block;width:100%;padding:10px;margin:8px 0">
+        <option value="">Selecteer een controleerbare grondslag</option>
+        <option value="consent">Aantoonbare voorafgaande toestemming</option>
+        <option value="existing_customer">Bestaande klant, soortgelijke dienst en afmeldmogelijkheid geboden</option>
+        <option value="designated_business_offers">Expliciet gepubliceerd adres voor commerciële aanbiedingen</option>
+      </select>
+      <label for="evidence-{{ lead.id }}">Bewijs (datum, verklaring, transactie of URL en context)</label>
+      <textarea name="evidence" id="evidence-{{ lead.id }}" required minlength="16" rows="3" placeholder="Noteer hier het bewijs van de grondslag..." style="display:block;width:100%;padding:10px;margin:8px 0"></textarea>
+      <label style="display:block;margin:10px 0"><input type="checkbox" name="verified" value="yes" required> Ik heb dit concept en het bewijs gecontroleerd en keur deze ene verzending goed.</label>
+      <button class="button" type="submit">Dit concept goedkeuren</button>
+    </form>
+    {% endif %}
+    {% elif decision.status == "approved" %}
+    <form method="post" action="/superfris/outbox/{{ lead.id }}/revoke">
+      <button class="button ghost" type="submit">Goedkeuring intrekken</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

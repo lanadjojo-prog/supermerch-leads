@@ -46,7 +46,7 @@ def dashboard(request: Request):
         elif local.hour >= 19:
             daily_start += timedelta(days=1)
         scanned_today = db.scalar(select(func.count(ChatCommand.id)).where(
-            ChatCommand.action == "instagram_priority_scan",
+            ChatCommand.action.in_(("instagram_priority_scan", "instagram_discovery")),
             ChatCommand.created_at >= _today_start_utc()
         )) or 0
         found_today = db.scalar(select(func.count(InstagramProspect.id)).where(

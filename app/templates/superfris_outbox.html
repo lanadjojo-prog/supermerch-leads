@@ -14,10 +14,13 @@
    · Verzonden vandaag: <strong>{{ state.sent_today }}</strong>
    · Pogingen vandaag: <strong>{{ state.attempts_today }}/30</strong>
    · Goedgekeurd wachtend: <strong>{{ state.approved_pending }}</strong></p>
-  {% if state.blocked_reason == "smtp_465_unavailable_on_render_free" %}
+  {% if state.blocked_reason == "resend_domain_or_api_key_unavailable" %}
   <div class="notice error">
-    <strong>SMTP nog geblokkeerd:</strong> de huidige Render Free-server blokkeert uitgaand SMTP-verkeer op poort 465.
-    De wachtrij is ingericht maar kan geen berichten verzenden. Verplaats de verzendmodule naar een geschikte SMTP-host of een betaald Render-plan voordat de netwerkblokkade wordt opgeheven.
+    <strong>HTTPS-verzending in voorbereiding:</strong> STRATO-SMTP is vervangen door Resend API.
+    Het domein superfris.online moet nog via DKIM/SPF in Resend worden geverifieerd voordat verzending mogelijk is.
+    <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer">Bekijk domeininstellingen</a>.
+    Bovendien is verzending uitsluitend toegestaan voor contacten met aantoonbare voorafgaande toestemming
+    of een toepasselijke bestaande klantrelatie. De huidige 30 prospectconcepten zijn niet automatisch vrijgegeven.
   </div>
   {% elif state.blocked_reason == "manual_pause" %}
   <div class="notice">De verzendwachtrij is handmatig gepauzeerd.</div>

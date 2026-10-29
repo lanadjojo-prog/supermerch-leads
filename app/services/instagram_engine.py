@@ -99,9 +99,11 @@ def paused(db):
 
 
 class MetaError(RuntimeError):
-    def __init__(self, message, code=None):
+    def __init__(self, message, code=None, subcode=None, scope_hint="unknown"):
         super().__init__(message)
         self.code = code
+        self.subcode = subcode
+        self.scope_hint = scope_hint
 
 
 class MetaClient:
@@ -122,7 +124,15 @@ class MetaClient:
             # Do not log raw API responses or request URLs (may contain secrets).
             error = data.get("error", {}) if isinstance(data, dict) else {}
             code = error.get("code", "unknown") if isinstance(error, dict) else "unknown"
-            raise MetaError(f"Meta API geweigerd (HTTP {response.status_code}, code {code}).", code=code)
+            subcode = error.get("error_subcode") if isinstance(error, dict) else None
+            message = str(error.get("message", "")).lower() if isinstance(error, dict) else ""
+            scope_hint = next((scope for scope in (
+                "instagram_manage_engagement", "instagram_basic", "pages_show_list",
+                "pages_read_engagement", "instagram_business_basic",
+                "instagram_business_manage_comments"
+            ) if scope in message), "unknown")
+            raise MetaError(f"Meta API geweigerd (HTTP {response.status_code}, code {code}).",
+                            code=code, subcode=subcode, scope_hint=scope_hint)
         return data
 
     def verify(self):

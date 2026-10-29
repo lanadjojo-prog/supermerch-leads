@@ -467,10 +467,17 @@ def main():
             try:
                 client = MetaClient()
                 client.verify()
+                print("INSTAGRAM_META_ACCOUNT_VERIFIED likes=0", flush=True)
                 media = client.media("stichting_kielegat")
                 print(f"INSTAGRAM_META_READONLY_OK account_verified=1 media_visible={len(media)} likes=0", flush=True)
             except Exception as exc:
-                print(f"INSTAGRAM_META_READONLY_FAIL category={type(exc).__name__} likes=0", flush=True)
+                # MetaClient wraps Graph API responses into a credential-free
+                # status and numeric error code; never print raw responses.
+                from app.services.instagram_engine import MetaError
+                if isinstance(exc, MetaError):
+                    print(f"INSTAGRAM_META_READONLY_FAIL code={exc.code} reason={str(exc)} likes=0", flush=True)
+                else:
+                    print(f"INSTAGRAM_META_READONLY_FAIL category={type(exc).__name__} likes=0", flush=True)
             finally:
                 if client:
                     client.close()

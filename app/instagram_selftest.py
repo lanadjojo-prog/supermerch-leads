@@ -184,7 +184,7 @@ class InstagramSmoke(unittest.TestCase):
             self.assertTrue(ig._daily_due(datetime(2026, 7, 1, 7, 0, tzinfo=timezone.utc)))
             self.assertFalse(ig._daily_due(datetime(2026, 7, 1, 6, 59, tzinfo=timezone.utc)))
 
-    def test_once_per_day_across_startup_and_health_wakes(self):
+    def test_once_per_hour_across_startup_and_health_wakes(self):
         discovered = []
         class FixedDate(datetime):
             @classmethod
@@ -202,7 +202,7 @@ class InstagramSmoke(unittest.TestCase):
             ig.run_background()
         self.assertEqual(discovered, [True])
         runs = self.db.scalars(select(ChatCommand).where(
-            ChatCommand.command_id == "instagram-day-2026-10-29")).all()
+            ChatCommand.command_id == "instagram-hour-2026-10-29-10")).all()
         self.assertEqual(len(runs), 1)
         self.assertEqual(runs[0].status, "complete")
 

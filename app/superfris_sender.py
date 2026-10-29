@@ -179,17 +179,26 @@ def _read_approved_strato_draft(client, lead: SuperfrisLead):
     code, data = client.uid("SEARCH", None, "HEADER", "X-Superfris-Lead-ID", str(lead.id))
     if code != "OK":
         raise RuntimeError("DRAFT_SEARCH_FAILED")
+    # IMAP HEADER SEARCH is a substring match: searching lead 1 may return
+    # lead 10, 11, etc. Fetch and verify the exact numeric header instead.
     uids = (data[0] or b"").split()
-    if len(uids) != 1:
+    if len(uids) > 200:
+        raise ValueError("DRAFT_SEARCH_TOO_BROAD")
+    exact = []
+    for uid in uids:
+        code, raw = client.uid("FETCH", uid, "(RFC822)")
+        if code != "OK":
+            raise RuntimeError("DRAFT_FETCH_FAILED")
+        payload = next((part[1] for part in raw or []
+                        if isinstance(part, tuple) and isinstance(part[1], bytes)), None)
+        if not payload:
+            continue
+        candidate = BytesParser(policy=policy.default).parsebytes(payload)
+        if str(candidate.get("X-Superfris-Lead-ID") or "") == str(lead.id):
+            exact.append((uid, candidate))
+    if len(exact) != 1:
         raise ValueError("DRAFT_NOT_UNIQUE_OR_MISSING")
-    code, raw = client.uid("FETCH", uids[0], "(RFC822)")
-    if code != "OK":
-        raise RuntimeError("DRAFT_FETCH_FAILED")
-    payload = next((part[1] for part in raw or []
-                    if isinstance(part, tuple) and isinstance(part[1], bytes)), None)
-    if not payload:
-        raise RuntimeError("DRAFT_BODY_MISSING")
-    msg = BytesParser(policy=policy.default).parsebytes(payload)
+    selected_uid, msg = exact[0]
     actual_from = parseaddr(msg.get("From", ""))[1].lower()
     actual_to = [e.lower() for _, e in getaddresses(msg.get_all("To", []))]
     if (actual_from != MAILBOX.lower() or actual_to != [lead.email.lower()]
@@ -199,7 +208,7 @@ def _read_approved_strato_draft(client, lead: SuperfrisLead):
         raise ValueError("DRAFT_HEADERS_DIFFER_FROM_APPROVAL")
     if not any(p.get_content_type() in ("text/plain", "text/html") for p in msg.walk()):
         raise ValueError("DRAFT_CONTENT_MISSING")
-    return msg, uids[0], sent_folder
+    return msg, selected_uid, sent_folder
 
 
 def _append_optout(msg) -> None:

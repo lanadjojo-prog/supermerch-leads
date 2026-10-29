@@ -136,11 +136,11 @@ class MetaClient:
             # A short sanitized provider explanation helps distinguish
             # missing permission from an unsupported endpoint.
             detail = str(error.get("message", "")) if isinstance(error, dict) else ""
-            detail = re.sub(r"https?://\\S+", "[url]", detail)
-            detail = re.sub(r"(?i)(?:access_token|app_secret|client_secret|password)[^\\s,;]*", "[secret]", detail)
+            detail = re.sub(r"https?://\S+", "[url]", detail)
+            detail = re.sub(r"(?i)(?:access_token|app_secret|client_secret|password)[^\s,;]*", "[secret]", detail)
             detail = re.sub(r"(?i)(?:EAA|IGAA)[A-Za-z0-9_-]{4,}", "[token]", detail)
-            detail = re.sub(r"\\b\\d{5,}\\b", "[id]", detail)
-            detail = detail.replace("\\n", " ")[:260]
+            detail = re.sub(r"\b\d{5,}\b", "[id]", detail)
+            detail = detail.replace("\n", " ")[:260]
             raise MetaError(f"Meta API geweigerd (HTTP {response.status_code}, code {code}).",
                             code=code, subcode=subcode, scope_hint=scope_hint, safe_detail=detail)
         return data

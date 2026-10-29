@@ -29,6 +29,9 @@ def _bounded_env(name, default, ceiling):
 DAILY_LIMIT = _bounded_env("INSTAGRAM_DAILY_LIKE_LIMIT", 100, 100)
 PER_ACCOUNT = 2
 DAILY_ACCOUNTS_LIMIT = _bounded_env("INSTAGRAM_DAILY_ACCOUNTS_LIMIT", 50, 100)
+# Finding 50 real accounts can require visiting many more than 50 websites.
+DAILY_WEBSITE_SCAN_LIMIT = _bounded_env("INSTAGRAM_DAILY_WEBSITE_SCAN_LIMIT", 250, 1000)
+WEBSITE_SCAN_BATCH = _bounded_env("INSTAGRAM_WEBSITE_SCAN_BATCH", 25, 50)
 
 
 def _today_start_utc(now=None):
@@ -147,11 +150,19 @@ class MetaClient:
 
 def discover(db):
     from .instagram_priority import discover_priority
-    # One shared daily scan budget, prioritising imported business domains.
+    # Find up to 50 new Instagram accounts, not merely 50 websites.
+    # Keep each hourly pass bounded so Render can respond between batches.
+    today_start = _today_start_utc()
+    accounts_found_today = db.scalar(select(func.count(InstagramProspect.id)).where(
+        InstagramProspect.created_at >= today_start)) or 0
     used = db.scalar(select(func.count(ChatCommand.id)).where(
         ChatCommand.action.in_(("instagram_priority_scan", "instagram_discovery")),
-        ChatCommand.created_at >= _today_start_utc())) or 0
-    remaining = max(0, DAILY_ACCOUNTS_LIMIT - used)
+        ChatCommand.created_at >= today_start)) or 0
+    remaining = max(0, min(
+        DAILY_ACCOUNTS_LIMIT - accounts_found_today,
+        DAILY_WEBSITE_SCAN_LIMIT - used,
+        WEBSITE_SCAN_BATCH,
+    ))
     first = discover_priority(db, remaining, claim)
     scanned = first["websites_scanned"]
     found = first["accounts_found"]
@@ -302,17 +313,15 @@ def engage(db, client, now):
 
 
 def _daily_due(now=None):
-    """Only one local-calendar daily run, starting at 09:00 Amsterdam time.
-
-    Health wake is the fallback when a free Render instance sleeps through 09:00.
-    INSTAGRAM_DAILY_NOT_BEFORE can activate the new schedule on a future date.
+    """Resume hourly between 09:00 and 20:00 Amsterdam time, until targets
+    or the daily website scan budget are reached. Never run overnight.
     """
     now = now or datetime.now(timezone.utc)
     local = now.astimezone(settings.local_timezone)
     start_date = os.getenv("INSTAGRAM_DAILY_NOT_BEFORE", "").strip()
     if start_date and local.date().isoformat() < start_date:
         return False
-    return local.hour >= 9
+    return 9 <= local.hour < 20
 
 
 def run_background():
@@ -325,9 +334,9 @@ def run_background():
     engagement_enabled = (connection_ready() and
         os.getenv("INSTAGRAM_LIKES_ENABLED", "false").lower() == "true")
     with SessionLocal() as db:
-        # Shared durable date lock: restart, health wake or concurrent threads
-        # cannot run the 50-site daily batch more than once.
-        slot = claim(db, f"instagram-day-{local:%Y-%m-%d}", "instagram_run")
+        # Shared hourly lock: continue finding accounts during the day without
+        # ever rescanning the same imported company or duplicating a batch.
+        slot = claim(db, f"instagram-hour-{local:%Y-%m-%d-%H}", "instagram_run")
         if slot is None:
             return
         try:
@@ -351,16 +360,10 @@ def run_background():
 
 
 def run_instagram_daily_scheduler(stop_event):
-    """Fire at 09:00 local time, including DST transitions.
-
-    Free Render can sleep; /health runs the same idempotent daily check
-    when the service wakes, so the queue still resumes on that date.
-    """
+    """Attempt each new local hour; /health is the wake-up fallback for Render."""
     while not stop_event.is_set():
         local = datetime.now(timezone.utc).astimezone(settings.local_timezone)
-        next_start = local.replace(hour=9, minute=0, second=0, microsecond=0)
-        if local >= next_start:
-            next_start += timedelta(days=1)
+        next_start = local.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
         seconds = max(0.01, (
             next_start.astimezone(timezone.utc) - datetime.now(timezone.utc)
         ).total_seconds())
@@ -381,5 +384,8 @@ def status_summary():
             "confirmed_likes": db.scalar(select(func.count(InstagramAction.id)).where(InstagramAction.status == "liked")) or 0,
             "daily_like_limit": DAILY_LIMIT,
             "daily_account_limit": DAILY_ACCOUNTS_LIMIT,
+            "daily_website_scan_limit": DAILY_WEBSITE_SCAN_LIMIT,
+            "accounts_found_today": db.scalar(select(func.count(InstagramProspect.id)).where(
+                InstagramProspect.created_at >= _today_start_utc())) or 0,
             "last_run_status": latest.status if latest else "not_started",
         }

@@ -34,6 +34,10 @@ from .services.automation_scheduler import run_automation_pass, run_automation_s
 from .services.daily_engine import engine_is_running, run_daily_lead_engine
 from .services.draft_pipeline import _today_utc_bounds, prepare_new_zoho_drafts
 from .superfris_leads import run_superfris_pass, superfris_stats, strato_mail_probe, run_strato_draft_selftest, drain_verified_chatgpt_backlog  # registers isolated tables
+from .superfris_leads import SuperfrisLead
+from .superfris_sender import (SuperfrisSendAuthorization, approve as approve_superfris_send,
+                               revoke as revoke_superfris_send, set_paused as pause_superfris_sender,
+                               status as superfris_sender_status, run_sender_loop)
 from .services.open_data_discovery import discover_businesses
 from .services.intelligence import generate_outreach
 from .services.outreach_delivery import DailySendLimitReached, send_lead, sent_today
@@ -150,6 +154,14 @@ async def lifespan(app: FastAPI):
             target=_run_superfris_periodic,
             args=(scheduler_stop,),
             name="superfris-periodic-drafts",
+            daemon=True,
+        ).start()
+    # Separate, explicitly approved STRATO sender. Never touches Zoho.
+    # It remains idle until SMTP connectivity is explicitly available.
+    if os.getenv("SUPERFRIS_SEND_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
+        threading.Thread(
+            target=run_sender_loop, args=(scheduler_stop,),
+            name="superfris-approved-smtp-10s",
             daemon=True,
         ).start()
     try:
@@ -392,6 +404,56 @@ def superfris_imap_check():
 @app.get("/api/superfris/status", dependencies=[Depends(auth)])
 def superfris_status(db: Session = Depends(get_db)):
     return superfris_stats(db)
+
+
+@app.get("/superfris/outbox", response_class=HTMLResponse, dependencies=[Depends(auth)])
+def superfris_outbox(request: Request, db: Session = Depends(get_db)):
+    """Admin review of only the leadmachine-created, already stored drafts."""
+    leads = db.scalars(select(SuperfrisLead).where(
+        SuperfrisLead.status.in_(("drafted", "sent"))
+    ).order_by(SuperfrisLead.id).limit(150)).all()
+    decisions = {a.lead_id: a for a in db.scalars(select(SuperfrisSendAuthorization)).all()}
+    return templates.TemplateResponse(request, "superfris_outbox.html", {
+        "app_name": settings.app_name, "leads": leads, "decisions": decisions,
+        "state": superfris_sender_status(db),
+        "notice": request.query_params.get("message", ""),
+    })
+
+
+@app.post("/superfris/outbox/{lead_id}/approve", dependencies=[Depends(auth)])
+def superfris_outbox_approve(lead_id: int, basis: str = Form(...),
+                             evidence: str = Form(...), verified: str = Form(""),
+                             db: Session = Depends(get_db)):
+    if verified != "yes":
+        raise HTTPException(422, "Je moet bevestigen dat je het bewijs hebt gecontroleerd.")
+    try:
+        approve_superfris_send(db, lead_id, basis, evidence)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return RedirectResponse("/superfris/outbox?message=" +
+                            quote_plus("Concept " + str(lead_id) + " goedgekeurd met bewijs."),
+                            status_code=303)
+
+
+@app.post("/superfris/outbox/{lead_id}/revoke", dependencies=[Depends(auth)])
+def superfris_outbox_revoke(lead_id: int, db: Session = Depends(get_db)):
+    revoke_superfris_send(db, lead_id)
+    return RedirectResponse("/superfris/outbox?message=" +
+                            quote_plus("Eventuele goedkeuring ingetrokken."), status_code=303)
+
+
+@app.post("/superfris/outbox/pause", dependencies=[Depends(auth)])
+def superfris_outbox_pause(paused: str = Form(...), db: Session = Depends(get_db)):
+    if paused not in ("true", "false"):
+        raise HTTPException(422, "Ongeldige status.")
+    pause_superfris_sender(db, paused == "true")
+    return RedirectResponse("/superfris/outbox?message=" +
+                            quote_plus("Verzendwachtrij bijgewerkt."), status_code=303)
+
+
+@app.get("/api/superfris/sender-status", dependencies=[Depends(auth)])
+def superfris_sender_state(db: Session = Depends(get_db)):
+    return superfris_sender_status(db)
 
 
 @app.post("/api/internal/daily-lead-engine")

@@ -14,6 +14,7 @@ import re
 import smtplib
 import ssl
 import threading
+import time
 from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
@@ -312,7 +313,7 @@ def send_one(db: Session) -> dict:
 def run_sender_loop(stop_event: threading.Event) -> None:
     """Each iteration sends at most one approved mail; 10s is the minimum delay."""
     while not stop_event.is_set():
-        if _enabled():
+        if _enabled() and _network_allowed():
             db = SessionLocal()
             try:
                 result = send_one(db)

@@ -4,15 +4,17 @@
 <p>Nieuwe zakelijke accounts uit de websites van gekwalificeerde SuperMerch-leads.</p>
 <section class="card">
 <h2>Status</h2>
-<p><strong>Automatisch elke dag om 09:00 (Nederlandse tijd).</strong>
-Volgende geplande start: <strong>{{ next_scheduled }}</strong>.
+<p><strong>Automatisch elk uur tussen 09:00 en 20:00 (Nederlandse tijd)</strong>, totdat het dagdoel is bereikt of de scanlimiet op is.
+Volgende geplande ronde: <strong>{{ next_scheduled }}</strong>.
 {% if schedule_start_date %}Activatie vanaf {{ schedule_start_date }}.{% endif %}
-Bij een slapende gratis Render-instantie start de ronde zodra /health de app weer wekt.</p>
-<p>Vandaag: <strong>{{ today_scanned }} / {{ daily_account_limit }}</strong> mailinglijstwebsites gecontroleerd
+Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
+<p>Vandaag: <strong>{{ today_found }} / {{ daily_account_limit }}</strong> nieuwe Instagram-accounts gevonden
+· <strong>{{ today_scanned }} / {{ daily_website_scan_limit }}</strong> bedrijfswebsites gecontroleerd
 · <strong>{{ today_likes }} / {{ daily_like_limit }}</strong> likes bevestigd.</p>
 <p>Zoeken: <strong>{{ 'ingeschakeld' if enabled else 'uitgeschakeld' }}</strong> · Meta-configuratie: <strong>{{ 'ingevuld; live toegang nog te verifiëren' if connected else 'nog niet gekoppeld' }}</strong></p>
 {% if paused %}<p><strong>Likes gepauzeerd na een fout. Controleer de Meta-koppeling voordat je de pauze laat opheffen.</strong></p>{% endif %}
 <p>Maximaal {{ daily_like_limit }} likes per Nederlandse kalenderdag, {{ per_account }} per account en {{ daily_account_limit }} accounts per dag, op posts van maximaal 30 dagen oud. Een account wordt eenmaal verwerkt. Geen automatische berichten of volgacties.</p>
+<p><strong>Let op:</strong> Meta's officiële Instagram-API ondersteunt geen automatische likes op berichten van andere accounts. Het likedoel is een maximum/doelwaarde voor handmatige opvolging; de automatische functie blijft uitgeschakeld.</p>
 {% if not connected %}<p>De browserlogin geldt alleen voor de browser. Automatische likes wachten op de officiële Meta-koppeling; gevonden accounts blijven hier bewaard.</p>{% endif %}
 </section>
 <section class="card">

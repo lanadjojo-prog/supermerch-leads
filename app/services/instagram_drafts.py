@@ -33,7 +33,13 @@ def message(username, product, variant=None):
         'B': f'Hoi! Ik ben Chris van SuperMerch. Hebben jullie weleens gedacht aan {item} helemaal in jullie eigen design en kleuren? Ik kan vrijblijvend een gratis ontwerpvoorstel maken. Lijkt het jullie leuk om eens te zien?',
         'C': f'Hoi! Ik ben Chris van SuperMerch. {maybe} Zal ik vrijblijvend een gratis ontwerpvoorstel maken?',
     }
-    return versions[variant]
+    text = versions[variant]
+    # User-supplied positioning; no invented quantities or price guarantees.
+    detail = 'Dat kan ook in kleine oplages, tegen scherpe prijzen. '
+    for opening in ('Als jullie willen,', 'Ik kan vrijblijvend', 'Zal ik vrijblijvend'):
+        if opening in text:
+            return text.replace(opening, detail + opening, 1)
+    return text
 
 
 def initial_draft(prospect, lead=None):

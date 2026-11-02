@@ -73,6 +73,8 @@ class MessageDraftTests(unittest.TestCase):
                 self.assertIn('Chris', text)
                 self.assertNotIn('Giovanni', text)
                 self.assertIn('eigen design en kleuren', text)
+                self.assertIn('kleine oplages', text)
+                self.assertIn('scherpe prijzen', text)
         self.assertEqual(len({drafts.variant_for('club' + str(i)) for i in range(100)}), 3)
 
     def test_comparison_uses_actual_manual_sends_and_excludes_edited(self):

@@ -363,6 +363,12 @@ def run_background():
             return
         try:
             result = discover(db)
+            try:
+                from .instagram_drafts import ensure_drafts
+                ensure_drafts(db)
+            except Exception:
+                db.rollback()
+                __import__('logging').getLogger(__name__).exception('Instagram-concepten opslaan mislukt')
             if engagement_enabled:
                 client = MetaClient()
                 try:
@@ -411,4 +417,5 @@ def status_summary():
                 InstagramProspect.created_at >= _today_start_utc())) or 0,
             "last_run_status": latest.status if latest else "not_started",
         }
+
 

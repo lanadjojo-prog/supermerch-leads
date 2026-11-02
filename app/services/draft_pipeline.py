@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models import Campaign, ChatCommand, Lead
 from . import zoho_mail
+from .supermerch_identity import normalize_sender_identity
 from .intelligence import outreach_subject, outreach_variant
 from .scoring import TARGET_SECTORS
 
@@ -88,7 +89,7 @@ def _text_for_lead(lead: Lead) -> tuple[str, str]:
         else:
             replacement = f"Ik kwam {lead.company_name} tegen via jullie website."
         message = message.replace(generic, replacement, 1)
-    return subject, message
+    return normalize_sender_identity(subject), normalize_sender_identity(message)
 
 
 def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int = 30) -> dict:
@@ -215,3 +216,4 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             )
     result["status"] = "completed"
     return result
+

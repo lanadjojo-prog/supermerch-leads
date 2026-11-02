@@ -286,4 +286,6 @@ Extra regels:
 - Een vacature/groei-signaal alleen is te zwak voor stellige personalisatie; formuleer dan terughoudend.
 """
     response = client.responses.create(model=settings.openai_model, input=prompt, store=False)
-    return response.output_text.strip()
+    from .supermerch_identity import normalize_sender_identity
+    return normalize_sender_identity(response.output_text.strip())
+

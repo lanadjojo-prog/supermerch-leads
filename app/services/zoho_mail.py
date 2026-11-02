@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import MailIntegration
+from .supermerch_identity import normalize_sender_identity
 
 PROVIDER = "zoho"
 SCOPES = "ZohoMail.accounts.READ,ZohoMail.messages.CREATE"
@@ -280,8 +281,8 @@ def send_email(db: Session, to_address: str, subject: str, content: str,
     body = {
         "fromAddress": row.email_address,
         "toAddress": to_address,
-        "subject": subject,
-        "content": _to_html_email(content) + _signature_html(),
+        "subject": normalize_sender_identity(subject),
+        "content": _to_html_email(normalize_sender_identity(content)) + _signature_html(),
         "mailFormat": "html",
     }
     if cc_address and cc_address.lower() != to_address.lower():
@@ -326,8 +327,8 @@ def save_draft(db: Session, *, to_address: str, subject: str, content: str) -> d
         "mode": "draft",
         "fromAddress": row.email_address,
         "toAddress": to_address,
-        "subject": subject,
-        "content": _to_html_email(content) + _signature_html(),
+        "subject": normalize_sender_identity(subject),
+        "content": _to_html_email(normalize_sender_identity(content)) + _signature_html(),
         "mailFormat": "html",
     }
     access_token = refresh_access_token(_decrypt(row.refresh_token_encrypted))
@@ -345,3 +346,4 @@ def save_draft(db: Session, *, to_address: str, subject: str, content: str) -> d
     if str(status.get("code")) not in ("200", "201"):
         raise RuntimeError("Zoho accepteerde het opslaan van het concept niet.")
     return payload
+

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Instagram prospecting</h1>
+<div class="ig-hero"><div><p class="eyebrow">SUPERMERCH SOCIAL</p><h1>Instagram crawler</h1><p>Accounts ontdekken, berichten voorbereiden en resultaten volgen.</p></div><span class="ig-live">{{ 'Crawler actief' if enabled else 'Crawler uitgeschakeld' }}</span></div><nav class="ig-tabs" aria-label="Instagram onderdelen"><a href="#overview" data-ig-tab="overview">Overzicht</a><a href="#accounts" data-ig-tab="accounts">Accounts</a><a href="#drafts" data-ig-tab="drafts">Berichtconcepten</a><a href="#activity" data-ig-tab="activity">Activiteit</a></nav><div data-ig-panel="overview" id="overview"><div class="ig-metrics"><div><small>Accounts vandaag</small><strong>{{ today_found }} / {{ daily_account_limit }}</strong></div><div><small>Websites gescand</small><strong>{{ today_scanned }} / {{ daily_website_scan_limit }}</strong></div><div><small>Likes bevestigd</small><strong>{{ today_likes }} / {{ daily_like_limit }}</strong></div><div><small>Concepten</small><strong>{{ prospects|length }}</strong></div></div>
 <p>Nieuwe zakelijke accounts uit de websites van gekwalificeerde SuperMerch-leads.</p>
 <section class="card">
 <h2>Status</h2>
@@ -40,17 +40,17 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 </form>
 {% if request.query_params.get('scan') %}<p>Scan gestart. Vernieuw de pagina voor de resultaten.</p>{% endif %}
 </section>
-<h2>Mailinglijst: zoekstatus</h2>
+</div><div data-ig-panel="accounts" id="accounts" hidden><section class="panel"><div class="panel-head"><div><p class="eyebrow">ACCOUNTOVERZICHT</p><h2>Gevonden accounts</h2><p>Zoek in de mailinglijst en bekijk de ontdekte Instagram-profielen.</p></div></div><input class="ig-search" type="search" placeholder="Zoek bedrijf, domein of account…" data-ig-search="account"><div class="table-wrap"><table><thead><tr><th>Instagram-account</th><th>Status</th><th>Bron</th></tr></thead><tbody>{% for p in prospects %}<tr data-ig-account-row><td><a href="https://www.instagram.com/{{ p.username|urlencode }}/" target="_blank" rel="noopener noreferrer"><strong>@{{ p.username }}</strong></a></td><td><span class="badge">{{ p.status }}</span></td><td>{% if p.lead_id %}<a href="/leads/{{ p.lead_id }}">Bedrijfsgegevens</a>{% elif p.source_url %}{{ p.source_url }}{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="3">Nog geen accounts gevonden.</td></tr>{% endfor %}</tbody></table></div></section><section class="panel"><h2>Mailinglijst: zoekstatus</h2>
 <table><thead><tr><th>Bedrijf</th><th>Domein</th><th>Instagram</th><th>Status</th></tr></thead><tbody>
 {% for r in priority_rows %}
 <tr><td>{{ r.company }}</td><td>{{ r.domain }}</td><td>{% if r.username %}<a href="https://www.instagram.com/{{ r.username }}/" target="_blank" rel="noopener noreferrer">@{{ r.username }}</a>{% else %}—{% endif %}</td><td>{{ r.status }}</td></tr>
 {% else %}<tr><td colspan="4">Nog geen mailinglijst geïmporteerd.</td></tr>{% endfor %}
 </tbody></table>
-<h2>Gevonden accounts en berichtconcepten</h2>
+</section></div><div data-ig-panel="drafts" id="drafts" hidden><div class="panel"><p class="eyebrow">BERICHTENSTUDIO</p><h2>Berichtconcepten</h2><p>Bekijk, bewerk en kopieer je voorstellen. Er worden geen DM's automatisch verzonden.</p><input class="ig-search" type="search" placeholder="Zoek op Instagram-account of bericht…" data-ig-search="draft"></div>
 <p>Productsuggesties zijn hypotheses op basis van beschikbare bedrijfsgegevens. Controleer de bron en pas het bericht aan. Kopiëren of een profiel openen verstuurt niets. Concepten staan alleen in dit dashboard.</p>
 {% if request.query_params.get('draft_saved') %}<p role="status">Concept bijgewerkt.</p>{% endif %}
 {% for p in prospects %}{% set d = message_drafts[p.id] %}
-<section class="card" id="draft-{{ p.id }}">
+<section class="card ig-draft-card" data-ig-draft-card id="draft-{{ p.id }}">
 <h3><a href="https://www.instagram.com/{{ p.username|urlencode }}/" target="_blank" rel="noopener noreferrer">@{{ p.username }}</a></h3>
 <p>Account: {{ p.status }} · Concept: {{ {'draft':'Te beoordelen', 'manually_sent':'Door jou gemarkeerd als verstuurd', 'archived':'Gearchiveerd'}.get(d.status, d.status) }}</p>
 <p>{% if p.lead_id %}<a href="/leads/{{ p.lead_id }}">Bekijk bedrijfsgegevens</a>{% endif %}
@@ -88,7 +88,7 @@ document.querySelectorAll('[data-copy-message]').forEach(button => {
   });
 });
 </script>
-<h2>Tekstvarianten vergelijken</h2>
+</div><div data-ig-panel="activity" id="activity" hidden><section class="panel"><h2>Tekstvarianten vergelijken</h2>
 <p>Vergelijk per product. Alleen door jou als verstuurd geregistreerde, ongewijzigde teksten tellen mee. Kopiëren telt niet als verzending. Reacties worden niet automatisch uit Instagram gelezen. Kleine aantallen zijn nog geen bewijs van een winnaar.</p>
 <table><thead><tr><th>Product</th><th>Variant</th><th>Zelf verstuurd</th><th>Reacties</th><th>Interesse</th></tr></thead><tbody>
 {% for r in experiment_rows %}<tr><td>{{ r.product }}</td><td>{{ r.variant }}</td><td>{{ r.sent }}</td><td>{{ r.replied }}</td><td>{{ r.interested }} / {{ r.sent }}</td></tr>{% else %}<tr><td colspan="5">Nog geen geregistreerde testresultaten.</td></tr>{% endfor %}
@@ -100,6 +100,6 @@ document.querySelectorAll('[data-copy-message]').forEach(button => {
 </tbody></table>
 <h2>Laatste zoekrondes</h2>
 {% for run in runs %}<p>{{ run.created_at }} UTC · {{ run.status }} · {{ run.result or 'Bezig' }}</p>{% else %}<p>Nog niet gestart.</p>{% endfor %}
-{% endblock %}
+</section></div><script>(function(){const tabs=[...document.querySelectorAll('[data-ig-tab]')],panels=[...document.querySelectorAll('[data-ig-panel]')];function activate(name){if(!tabs.some(t=>t.dataset.igTab===name))name='overview';tabs.forEach(t=>{let active=t.dataset.igTab===name;t.classList.toggle('active',active);t.setAttribute('aria-current',active?'page':'false')});panels.forEach(p=>p.hidden=p.dataset.igPanel!==name)}tabs.forEach(t=>t.addEventListener('click',()=>activate(t.dataset.igTab)));window.addEventListener('hashchange',()=>activate(location.hash.slice(1).split('-')[0]==='draft'?'drafts':location.hash.slice(1)));activate(location.search.includes('draft_saved')||location.hash.startsWith('#draft-')?'drafts':location.hash.slice(1));document.querySelectorAll('[data-ig-search]').forEach(input=>input.addEventListener('input',()=>{let selector=input.dataset.igSearch==='account'?'[data-ig-account-row]':'[data-ig-draft-card]';document.querySelectorAll(selector).forEach(row=>row.hidden=!row.textContent.toLowerCase().includes(input.value.toLowerCase()))}))})();</script>{% endblock %}
 
 

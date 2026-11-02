@@ -55,7 +55,7 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 <p>Account: {{ p.status }} · Concept: {{ {'draft':'Te beoordelen', 'manually_sent':'Door jou gemarkeerd als verstuurd', 'archived':'Gearchiveerd'}.get(d.status, d.status) }}</p>
 <p>{% if p.lead_id %}<a href="/leads/{{ p.lead_id }}">Bekijk bedrijfsgegevens</a>{% endif %}
 {% if p.source_url and (p.source_url.startswith('https://') or p.source_url.startswith('http://')) %} · <a href="{{ p.source_url }}" target="_blank" rel="noopener noreferrer">Bronwebsite</a>{% endif %}</p>
-<p>{{ d.reason }}</p>
+<p>{{ d.reason }} · Tekstvariant {{ d.get('variant', 'bestaand concept') }}{% if d.get('edited') %} · Eigen tekst (apart van de vergelijking){% endif %}</p>
 <form method="post" action="/instagram/draft/{{ p.id }}">
 <label for="product-{{ p.id }}">Productsuggestie</label>
 <select name="product" id="product-{{ p.id }}">{% for value, label in draft_products.items() %}<option value="{{ value }}" {% if d.product == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
@@ -65,6 +65,10 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 <button type="button" data-copy-message="message-{{ p.id }}">Kopieer bericht</button>
 <button type="submit" name="operation" value="save">Concept opslaan</button>
 {% if d.status == 'draft' %}<button type="submit" name="operation" value="sent">Markeer als zelf verstuurd</button><button type="submit" name="operation" value="archive">Archiveren</button>{% else %}<button type="submit" name="operation" value="reopen">Terug naar concept</button>{% endif %}
+<label for="outcome-{{ p.id }}">Reactie (zelf registreren)</label>
+<select name="outcome" id="outcome-{{ p.id }}">
+{% for value, label in [('unknown','Nog geen reactie geregistreerd'), ('replied','Wel reactie, belangstelling nog onbekend'), ('interested','Interesse'), ('not_interested','Geen interesse')] %}<option value="{{ value }}" {% if d.get('outcome', 'unknown') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+</select>
 <span role="status" class="copy-status"></span>
 </form>
 </section>
@@ -84,6 +88,11 @@ document.querySelectorAll('[data-copy-message]').forEach(button => {
   });
 });
 </script>
+<h2>Tekstvarianten vergelijken</h2>
+<p>Vergelijk per product. Alleen door jou als verstuurd geregistreerde, ongewijzigde teksten tellen mee. Kopiëren telt niet als verzending. Reacties worden niet automatisch uit Instagram gelezen. Kleine aantallen zijn nog geen bewijs van een winnaar.</p>
+<table><thead><tr><th>Product</th><th>Variant</th><th>Zelf verstuurd</th><th>Reacties</th><th>Interesse</th></tr></thead><tbody>
+{% for r in experiment_rows %}<tr><td>{{ r.product }}</td><td>{{ r.variant }}</td><td>{{ r.sent }}</td><td>{{ r.replied }}</td><td>{{ r.interested }} / {{ r.sent }}</td></tr>{% else %}<tr><td colspan="5">Nog geen geregistreerde testresultaten.</td></tr>{% endfor %}
+</tbody></table>
 <h2>Acties</h2>
 <table><thead><tr><th>Tijd (UTC)</th><th>Account</th><th>Post</th><th>Resultaat</th></tr></thead><tbody>
 {% for a in actions %}<tr><td>{{ a.created_at }}</td><td>@{{ a.username }}</td><td><a href="{{ a.permalink }}" target="_blank" rel="noopener noreferrer">Bekijk post</a></td><td>{{ a.status }}</td></tr>

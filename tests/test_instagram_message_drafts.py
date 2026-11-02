@@ -62,6 +62,35 @@ class MessageDraftTests(unittest.TestCase):
         drafts.ensure_drafts(self.db)
         self.assertEqual(len(self.db.scalars(select(models.ChatCommand)).all()), 2)
 
+    def test_exactly_one_stable_variant_and_chris(self):
+        first = drafts.initial_draft(self.prospect)
+        second = drafts.initial_draft(self.prospect)
+        self.assertEqual(first['variant'], second['variant'])
+        self.assertIsInstance(first['text'], str)
+        for product in drafts.PRODUCTS:
+            for variant in 'ABC':
+                text = drafts.message('testclub', product, variant)
+                self.assertIn('Chris', text)
+                self.assertNotIn('Giovanni', text)
+                self.assertIn('eigen design en kleuren', text)
+        self.assertEqual(len({drafts.variant_for('club' + str(i)) for i in range(100)}), 3)
+
+    def test_comparison_uses_actual_manual_sends_and_excludes_edited(self):
+        drafts.ensure_drafts(self.db)
+        row = self.db.scalar(select(models.ChatCommand))
+        data = json.loads(row.result)
+        self.assertEqual(drafts.experiment_summary(self.db), [])
+        data.update(sent_at='2026-11-02T18:00:00+01:00', outcome='interested')
+        row.result = json.dumps(data)
+        self.db.commit()
+        summary = drafts.experiment_summary(self.db)
+        self.assertEqual(summary[0]['sent'], 1)
+        self.assertEqual(summary[0]['interested'], 1)
+        data['edited'] = True
+        row.result = json.dumps(data)
+        self.db.commit()
+        self.assertEqual(drafts.experiment_summary(self.db), [])
+
     def test_render_escapes_message_and_has_manual_controls(self):
         drafts.ensure_drafts(self.db)
         row = self.db.scalar(select(models.ChatCommand))

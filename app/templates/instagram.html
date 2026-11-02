@@ -46,11 +46,44 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 <tr><td>{{ r.company }}</td><td>{{ r.domain }}</td><td>{% if r.username %}<a href="https://www.instagram.com/{{ r.username }}/" target="_blank" rel="noopener noreferrer">@{{ r.username }}</a>{% else %}—{% endif %}</td><td>{{ r.status }}</td></tr>
 {% else %}<tr><td colspan="4">Nog geen mailinglijst geïmporteerd.</td></tr>{% endfor %}
 </tbody></table>
-<h2>Gevonden accounts</h2>
-<table><thead><tr><th>Account</th><th>Herkomst</th><th>Status</th></tr></thead><tbody>
-{% for p in prospects %}<tr><td><a href="https://www.instagram.com/{{ p.username }}/" target="_blank" rel="noopener noreferrer">@{{ p.username }}</a></td><td><a href="/leads/{{ p.lead_id }}">Lead {{ p.lead_id }}</a> · <a href="{{ p.source_url }}" target="_blank" rel="noopener noreferrer">Bronwebsite</a></td><td>{{ p.status }}</td></tr>
-{% else %}<tr><td colspan="3">Nog geen accounts gevonden.</td></tr>{% endfor %}
-</tbody></table>
+<h2>Gevonden accounts en berichtconcepten</h2>
+<p>Productsuggesties zijn hypotheses op basis van beschikbare bedrijfsgegevens. Controleer de bron en pas het bericht aan. Kopiëren of een profiel openen verstuurt niets. Concepten staan alleen in dit dashboard.</p>
+{% if request.query_params.get('draft_saved') %}<p role="status">Concept bijgewerkt.</p>{% endif %}
+{% for p in prospects %}{% set d = message_drafts[p.id] %}
+<section class="card" id="draft-{{ p.id }}">
+<h3><a href="https://www.instagram.com/{{ p.username|urlencode }}/" target="_blank" rel="noopener noreferrer">@{{ p.username }}</a></h3>
+<p>Account: {{ p.status }} · Concept: {{ {'draft':'Te beoordelen', 'manually_sent':'Door jou gemarkeerd als verstuurd', 'archived':'Gearchiveerd'}.get(d.status, d.status) }}</p>
+<p>{% if p.lead_id %}<a href="/leads/{{ p.lead_id }}">Bekijk bedrijfsgegevens</a>{% endif %}
+{% if p.source_url and (p.source_url.startswith('https://') or p.source_url.startswith('http://')) %} · <a href="{{ p.source_url }}" target="_blank" rel="noopener noreferrer">Bronwebsite</a>{% endif %}</p>
+<p>{{ d.reason }}</p>
+<form method="post" action="/instagram/draft/{{ p.id }}">
+<label for="product-{{ p.id }}">Productsuggestie</label>
+<select name="product" id="product-{{ p.id }}">{% for value, label in draft_products.items() %}<option value="{{ value }}" {% if d.product == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<button type="submit" name="operation" value="regenerate">Nieuw voorstel voor dit product</button>
+<label for="message-{{ p.id }}">Berichtconcept</label>
+<textarea name="text" id="message-{{ p.id }}" rows="5" maxlength="2000" style="width:100%;box-sizing:border-box">{{ d.text }}</textarea>
+<button type="button" data-copy-message="message-{{ p.id }}">Kopieer bericht</button>
+<button type="submit" name="operation" value="save">Concept opslaan</button>
+{% if d.status == 'draft' %}<button type="submit" name="operation" value="sent">Markeer als zelf verstuurd</button><button type="submit" name="operation" value="archive">Archiveren</button>{% else %}<button type="submit" name="operation" value="reopen">Terug naar concept</button>{% endif %}
+<span role="status" class="copy-status"></span>
+</form>
+</section>
+{% else %}<p>Nog geen accounts gevonden.</p>{% endfor %}
+<script>
+document.querySelectorAll('[data-copy-message]').forEach(button => {
+  button.addEventListener('click', async () => {
+    const field = document.getElementById(button.dataset.copyMessage);
+    const status = button.parentElement.querySelector('.copy-status');
+    try {
+      await navigator.clipboard.writeText(field.value);
+      status.textContent = 'Bericht gekopieerd. Verstuur het zelf in Instagram.';
+    } catch (error) {
+      field.focus(); field.select();
+      status.textContent = 'Tekst geselecteerd; kopieer deze handmatig.';
+    }
+  });
+});
+</script>
 <h2>Acties</h2>
 <table><thead><tr><th>Tijd (UTC)</th><th>Account</th><th>Post</th><th>Resultaat</th></tr></thead><tbody>
 {% for a in actions %}<tr><td>{{ a.created_at }}</td><td>@{{ a.username }}</td><td><a href="{{ a.permalink }}" target="_blank" rel="noopener noreferrer">Bekijk post</a></td><td>{{ a.status }}</td></tr>
@@ -59,4 +92,5 @@ Bij een slapende gratis Render-instantie wekt de geplande controle de app.</p>
 <h2>Laatste zoekrondes</h2>
 {% for run in runs %}<p>{{ run.created_at }} UTC · {{ run.status }} · {{ run.result or 'Bezig' }}</p>{% else %}<p>Nog niet gestart.</p>{% endfor %}
 {% endblock %}
+
 

@@ -18,6 +18,7 @@ from .services.instagram_engine import (
     _today_start_utc, connection_ready, discover, enabled, paused, engage, MetaClient,
 )
 from .services.instagram_priority import import_mailing_csv, priority_counts
+from .services.instagram_drafts import PRODUCTS, draft_cards, message
 
 router = APIRouter(prefix="/instagram", tags=["instagram"])
 logger = logging.getLogger(__name__)
@@ -56,7 +57,11 @@ def dashboard(request: Request):
             InstagramAction.status == "liked",
             InstagramAction.day_slot.like(f"{day}:%")
         )) or 0
+        prospects = db.scalars(select(InstagramProspect).order_by(
+            InstagramProspect.id.desc()).limit(100)).all()
         return templates.TemplateResponse(request, "instagram.html", {
+            "message_drafts": draft_cards(db, prospects),
+            "draft_products": PRODUCTS,
             "today_scanned": scanned_today,
             "today_found": found_today,
             "daily_website_scan_limit": DAILY_WEBSITE_SCAN_LIMIT,
@@ -72,8 +77,7 @@ def dashboard(request: Request):
             "imported": request.query_params.get("imported"),
             "existing": request.query_params.get("existing"),
             "skipped": request.query_params.get("skipped"),
-            "prospects": db.scalars(select(InstagramProspect).order_by(
-                InstagramProspect.id.desc()).limit(100)).all(),
+            "prospects": prospects,
             "actions": db.scalars(select(InstagramAction).order_by(
                 InstagramAction.id.desc()).limit(100)).all(),
             "runs": db.scalars(select(ChatCommand).where(
@@ -241,3 +245,46 @@ def private_system_map_status(request: Request):
             ],
         }
 
+
+
+
+@router.post("/draft/{prospect_id}", dependencies=[Depends(require_basic_auth)])
+def save_message_draft(request: Request, prospect_id: int, product: str = Form(...),
+                       text: str = Form(""), operation: str = Form("save")):
+    # No external request: marking sent is an operator's manual record only.
+    from sqlalchemy.exc import IntegrityError
+    from urllib.parse import urlsplit
+    origin = request.headers.get("origin")
+    if origin and origin != "null" and urlsplit(origin).netloc != request.url.netloc:
+        raise HTTPException(403, "Ongeldige herkomst.")
+    if product not in PRODUCTS or operation not in ("save", "regenerate", "sent", "archive", "reopen"):
+        raise HTTPException(400, "Ongeldige conceptactie.")
+    if len(text) > 2000:
+        raise HTTPException(400, "Maximaal 2000 tekens.")
+    with SessionLocal() as db:
+        prospect = db.get(InstagramProspect, prospect_id)
+        if not prospect:
+            raise HTTPException(404, "Account niet gevonden.")
+        key = f"instagram-draft-{prospect.username}"
+        row = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key).with_for_update())
+        if row is None:
+            try:
+                with db.begin_nested():
+                    row = ChatCommand(command_id=key, action="instagram_message_draft", status="draft")
+                    db.add(row)
+                    db.flush()
+            except IntegrityError:
+                row = db.scalar(select(ChatCommand).where(ChatCommand.command_id == key).with_for_update())
+        if operation == "regenerate":
+            text = message(prospect.username, product)
+        if not text.strip():
+            raise HTTPException(400, "Vul een bericht in.")
+        state = {"sent": "manually_sent", "archive": "archived", "reopen": "draft"}.get(operation)
+        if state:
+            row.status = state
+        elif row.status not in ("manually_sent", "archived"):
+            row.status = "draft"
+        row.result = json.dumps({"product": product, "text": text.strip(),
+            "reason": "Product en tekst door jou te beoordelen."}, ensure_ascii=False)
+        db.commit()
+    return RedirectResponse(f"/instagram/?draft_saved=1#draft-{prospect_id}", status_code=303)

@@ -39,8 +39,82 @@ const dnsCache=new Map();
 async function publicUrl(value){let u;try{u=new URL(value)}catch{throw Error('Ongeldig webadres')}if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.port&&!['80','443'].includes(u.port))throw Error('Alleen openbare webadressen zijn toegestaan');const host=u.hostname.toLowerCase().replace(/\.$/,'');if(!host||host==='localhost'||host.endsWith('.localhost')||host.endsWith('.local')||host.endsWith('.internal')||host.endsWith('.test')||blockedAddress(host))throw Error('Privéadressen zijn niet toegestaan');let addresses=dnsCache.get(host);if(!addresses||Date.now()-addresses.time>60000){const found=net.isIP(host)?[{address:host}]:await dns.lookup(host,{all:true,verbatim:true});addresses={time:Date.now(),list:found.map(a=>a.address)};dnsCache.set(host,addresses)}if(!addresses.list.length||addresses.list.some(blockedAddress))throw Error('Privéadressen zijn niet toegestaan');return u.href}
 function safeTarget(value){const text=String(value||'').trim();if(!text||text.length>1800)throw Error('Ongeldig webadres');return /^(https?:)?\/\//i.test(text)?text.startsWith('//')?'https:'+text:text:'https://'+text}
 function validNumber(n,min,max){return Number.isFinite(Number(n))&&Number(n)>=min&&Number(n)<=max}
-const scan = () => {const target=window.__translationTarget||'nl';const lang=(document.documentElement.lang||'').toLowerCase().split('-')[0];const detect=text=>{if(/[\u3040-\u30ff]/.test(text))return 'ja';if(/[\uac00-\ud7af]/.test(text))return 'ko';if(/[\u3400-\u9fff]/.test(text))return 'zh-CN';if(/[\u0400-\u04ff]/.test(text))return 'ru';if(/[\u0600-\u06ff]/.test(text))return 'ar';if(/[\u0900-\u097f]/.test(text))return 'hi';if(/[\u0370-\u03ff]/.test(text))return 'el';if(lang&&lang!=='und'&&lang!=='auto')return lang;const words=' '+text.toLowerCase()+' ';if(/\b(the|and|with|from|your|this|example)\b/.test(words))return 'en';if(/\b(le|les|des|avec|pour|vous)\b/.test(words))return 'fr';if(/\b(der|die|das|und|mit|für)\b/.test(words))return 'de';if(/\b(el|los|las|para|con|una)\b/.test(words))return 'es';return ''};const visible=[],other=[],seen=new Set();const add=(text,element)=>{text=text.trim();if(!text||new TextEncoder().encode(text).length>450||!/[\p{L}]/u.test(text)||seen.has(text))return;const from=detect(text);if(!from||from===target)return;seen.add(text);const rect=element.getBoundingClientRect();(rect.bottom>0&&rect.top<innerHeight?visible:other).push({source:text,from})};const root=document.body;if(!root)return [];const walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);while(walk.nextNode()&&visible.length+other.length<300){const node=walk.currentNode,p=node.parentElement;if(!p||p.closest('script,style,noscript,textarea,input,select,option,[contenteditable],svg'))continue;const style=getComputedStyle(p);if(style.display==='none'||style.visibility==='hidden')continue;add(node.textContent,p)}for(const el of root.querySelectorAll('input[placeholder],textarea[placeholder]')){if(visible.length+other.length>=300)break;add(el.getAttribute('placeholder')||'',el)}return visible.concat(other)};
-const apply = map => {const root=document.body||document.documentElement;const walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let changed=0;while(walk.nextNode()){const node=walk.currentNode,p=node.parentElement;if(!p||p.closest('script,style,noscript,textarea,input,select,option,[contenteditable],svg'))continue;const old=node.textContent.trim(),translated=map[old];if(translated){node.textContent=node.textContent.replace(old,translated);changed++}}for(const el of root.querySelectorAll('input[placeholder],textarea[placeholder]')){const old=el.getAttribute('placeholder');if(map[old]){el.setAttribute('placeholder',map[old]);changed++}}return changed};
+const scan = () => {
+  const target=window.__translationTarget||'nl';
+  const lang=(document.documentElement.lang||'').toLowerCase().split('-')[0];
+  const detect=text=>{
+    if(/[\u3040-\u30ff]/.test(text))return 'ja';
+    if(/[\uac00-\ud7af]/.test(text))return 'ko';
+    if(/[\u3400-\u9fff]/.test(text))return 'zh-CN';
+    if(/[\u0400-\u04ff]/.test(text))return 'ru';
+    if(/[\u0600-\u06ff]/.test(text))return 'ar';
+    if(/[\u0900-\u097f]/.test(text))return 'hi';
+    if(/[\u0370-\u03ff]/.test(text))return 'el';
+    if(lang&&lang!=='und'&&lang!=='auto')return lang;
+    const words=' '+text.toLowerCase()+' ';
+    if(/\b(the|and|with|from|your|this|example)\b/.test(words))return 'en';
+    if(/\b(le|les|des|avec|pour|vous)\b/.test(words))return 'fr';
+    if(/\b(der|die|das|und|mit|für)\b/.test(words))return 'de';
+    if(/\b(el|los|las|para|con|una)\b/.test(words))return 'es';
+    return '';
+  };
+  const enc=new TextEncoder(),visible=[],other=[],seen=new Set();
+  const split=text=>{
+    const pieces=[];let buffer='';
+    const emit=()=>{if(buffer.trim())pieces.push(buffer.trim());buffer=''};
+    for(const word of String(text||'').split(/(\s+)/u)){
+      if(!word)continue;
+      if(enc.encode(buffer+word).length<=420){buffer+=word;continue}
+      emit();
+      if(enc.encode(word).length<=420){buffer=word;continue}
+      for(const c of Array.from(word)){if(enc.encode(buffer+c).length>420)emit();buffer+=c}
+    }
+    emit();return pieces;
+  };
+  const add=(text,el)=>{
+    const rect=el.getBoundingClientRect(),here=rect.bottom>0&&rect.top<innerHeight;
+    for(const part of split(text)){
+      if(visible.length+other.length>=300)break;
+      if(!/[\p{L}]/u.test(part)||seen.has(part))continue;
+      const from=detect(part);
+      if(!from||from===target)continue;
+      seen.add(part);(here?visible:other).push({source:part,from});
+    }
+  };
+  const root=document.body;if(!root)return [];
+  const walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  while(walk.nextNode()&&visible.length+other.length<300){
+    const node=walk.currentNode,p=node.parentElement;
+    if(!p||p.closest('script,style,noscript,textarea,input,select,option,[contenteditable],svg'))continue;
+    const style=getComputedStyle(p);
+    if(style.display==='none'||style.visibility==='hidden')continue;
+    add(node.textContent,p);
+  }
+  for(const el of root.querySelectorAll('input[placeholder],textarea[placeholder]')){
+    if(visible.length+other.length>=300)break;
+    add(el.getAttribute('placeholder')||'',el);
+  }
+  return visible.concat(other);
+};
+const apply = map => {
+  const entries=Object.entries(map).filter(([old,next])=>old&&typeof next==='string'&&next&&next!==old);
+  if(!entries.length)return 0;
+  const root=document.body||document.documentElement,walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  let changed=0;
+  while(walk.nextNode()){
+    const node=walk.currentNode,p=node.parentElement;
+    if(!p||p.closest('script,style,noscript,textarea,input,select,option,[contenteditable],svg'))continue;
+    let value=node.textContent,dirty=false;
+    for(const [old,next] of entries){if(value.includes(old)){value=value.replaceAll(old,next);changed++;dirty=true}}
+    if(dirty)node.textContent=value;
+  }
+  for(const el of root.querySelectorAll('input[placeholder],textarea[placeholder]')){
+    let value=el.getAttribute('placeholder')||'',dirty=false;
+    for(const [old,next] of entries){if(value.includes(old)){value=value.replaceAll(old,next);changed++;dirty=true}}
+    if(dirty)el.setAttribute('placeholder',value);
+  }
+  return changed;
+};
 async function pending(s){const candidates=await s.page.evaluate(scan);return candidates.filter(t=>!s.cache.has(t.from+'|'+t.source)).slice(0,6)}
 async function closeSession(id){const s=sessions.get(id);if(!s)return;s.closed=true;sessions.delete(id);clearInterval(s.timer);try{await s.context.close()}catch{}}
 setInterval(()=>{for(const [id,s] of sessions)if(Date.now()-s.lastActive>IDLE_MS)closeSession(id)},30_000).unref();

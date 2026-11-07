@@ -54,7 +54,11 @@ def _official_email_source(lead: Lead) -> bool:
         return False
     origin = (urlparse(lead.email_source_url).hostname or "").lower().removeprefix("www.")
     company = lead.domain.lower().removeprefix("www.")
-    return bool(origin and (origin == company or origin.endswith("." + company)))
+    email_domain = lead.email.rsplit("@", 1)[-1].lower()
+    return bool(
+        origin and email_domain == company
+        and (origin == company or origin.endswith("." + company))
+    )
 
 
 def _text_for_lead(lead: Lead) -> tuple[str, str]:
@@ -114,6 +118,10 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
         result["status"] = "zoho_not_connected"
         return result
 
+    # Check both brands before saving any mailbox concept. An earlier
+    # SuperFris lead (even if already contacted) excludes its domain/email here.
+    from ..superfris_leads import SuperfrisLead
+
     leads = db.scalars(
         select(Lead)
         .join(Campaign)
@@ -162,6 +170,14 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
         ).limit(1))
         if previously_known_email is not None:
             continue
+        cross_brand_contact = db.scalar(select(SuperfrisLead.id).where(
+            or_(
+                func.lower(SuperfrisLead.domain) == lead.domain.lower(),
+                func.lower(SuperfrisLead.email) == lead.email.lower(),
+            ),
+        ).limit(1))
+        if cross_brand_contact is not None:
+            continue
         key = f"zoho-draft-lead-{lead.id}"
         if db.scalar(select(ChatCommand.id).where(ChatCommand.command_id == key)):
             continue
@@ -188,15 +204,20 @@ def prepare_new_zoho_drafts(db: Session, *, per_run: int = 5, daily_limit: int =
             response = zoho_mail.save_draft(
                 db, to_address=lead.email, subject=subject, content=content
             )
-            command.status = "complete"
-            command.finished_at = datetime.utcnow()
             payload = response.get("data") or {}
             if not isinstance(payload, dict):
                 payload = {}
+            saved_message_id = str(payload.get("messageId") or "").strip()
+            if not saved_message_id:
+                # API may have saved a draft despite an incomplete response.
+                # Mark it uncertain, never retry or claim it was saved.
+                raise RuntimeError("zoho_draft_message_id_missing")
+            command.status = "complete"
+            command.finished_at = datetime.utcnow()
             command.result = json.dumps({
                 "lead_id": lead.id, "company": lead.company_name,
                 "recipient": lead.email, "subject": subject,
-                "zoho_message_id": str(payload.get("messageId") or ""),
+                "zoho_message_id": saved_message_id,
             }, ensure_ascii=False)
             lead.status = "drafted"
             db.commit()

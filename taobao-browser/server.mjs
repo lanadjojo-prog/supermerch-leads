@@ -2,10 +2,24 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const port = Number(process.env.PORT || 10000);
 const secret = process.env.BROWSER_PROXY_SECRET;
+const appPassword = process.env.BROWSER_APP_PASSWORD;
+if (!appPassword || appPassword.length < 16) throw Error('BROWSER_APP_PASSWORD must be configured');
+const uiHtml = await readFile(new URL('./index.html', import.meta.url),'utf8');
+let starting=false;
+const failedLogins = new Map();
+function equal(a,b){const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&crypto.timingSafeEqual(x,y)}
+function uiCookie(req){const val=(String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('browser_login='))||'').slice(14);const parts=val.split('.');if(parts.length!==2)return false;const deadline=Number(parts[0]);if(!Number.isSafeInteger(deadline)||deadline<Date.now()||deadline>Date.now()+8*86400000)return false;const expected=crypto.createHmac('sha256',secret).update('browser-ui:'+parts[0]).digest('hex');return equal(parts[1],expected)}
+function cookieValue(){const exp=Date.now()+7*86400000;const sig=crypto.createHmac('sha256',secret).update('browser-ui:'+exp).digest('hex');return exp+'.'+sig}
+function sameOrigin(req){try{const u=new URL(String(req.headers.origin||''));return u.protocol==='https:'&&u.host===req.headers.host}catch{return false}}
+function auth(req){if(equal(req.headers['x-proxy-token'],secret))return true;return uiCookie(req)&&(req.method==='GET'||sameOrigin(req))}
+function decodeEntities(s){return s.replace(/&(?:amp|lt|gt|quot|apos|#39);/g,x=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"}[x]||x))}
+async function translateText(text,from,to){if(!text||from===to)return text;const pair=encodeURIComponent(from+'|'+to);try{const r=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(text)+'&langpair='+pair,{signal:AbortSignal.timeout(6000)});if(r.ok){const j=await r.json();const t=j.responseData?.translatedText;if(j.responseStatus===200&&typeof t==='string'&&t.trim()&&!/MYMEMORY WARNING/i.test(t))return decodeEntities(t.trim())}}catch{}try{const u='https://translate.googleapis.com/translate_a/single?client=gtx&sl='+encodeURIComponent(from)+'&tl='+encodeURIComponent(to)+'&dt=t&q='+encodeURIComponent(text);const r=await fetch(u,{signal:AbortSignal.timeout(6000)});if(r.ok){const j=await r.json();const t=j?.[0]?.map(x=>x?.[0]||'').join('');if(t)return t}}catch{}return text}
+
 if (!secret || secret.length < 24) throw Error('BROWSER_PROXY_SECRET must be set');
 const sessions = new Map();
 const IDLE_MS = 12 * 60_000;
@@ -31,10 +45,14 @@ async function pending(s){const candidates=await s.page.evaluate(scan);return ca
 async function closeSession(id){const s=sessions.get(id);if(!s)return;s.closed=true;sessions.delete(id);clearInterval(s.timer);try{await s.context.close()}catch{}}
 setInterval(()=>{for(const [id,s] of sessions)if(Date.now()-s.lastActive>IDLE_MS)closeSession(id)},30_000).unref();
 const server=http.createServer(async(req,res)=>{try{const u=new URL(req.url,'http://localhost');if(u.pathname==='/health'){json(res,200,{ok:true,activeSessions:sessions.size});return}
-const sent=req.headers['x-proxy-token'];const a=Buffer.from(String(sent||'')),b=Buffer.from(secret);if(a.length!==b.length||!crypto.timingSafeEqual(a,b)){error(res,401,'Unauthorized');return}
+if(u.pathname==='/'&&req.method==='GET'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-frame-options':'DENY','referrer-policy':'no-referrer','x-content-type-options':'nosniff'});res.end(uiHtml);return}
+if(u.pathname==='/auth'&&req.method==='GET'){json(res,200,{authenticated:uiCookie(req)});return}
+if(u.pathname==='/login'&&req.method==='POST'){if(!sameOrigin(req)){error(res,403,'Invalid origin');return}const ip=req.socket.remoteAddress||'unknown';const f=failedLogins.get(ip)||{count:0,time:0};if(Date.now()-f.time>15*60000){f.count=0;f.time=Date.now()}if(f.count>=12){error(res,429,'Te veel pogingen, probeer het later');return}const data=await body(req);if(!equal(data.password,appPassword)){f.count++;f.time=Date.now();failedLogins.set(ip,f);error(res,401,'Onjuist wachtwoord');return}failedLogins.delete(ip);res.setHeader('set-cookie','browser_login='+cookieValue()+'; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800');json(res,200,{authenticated:true});return}
+if(u.pathname==='/logout'&&req.method==='POST'){if(!sameOrigin(req)){error(res,403,'Invalid origin');return}res.setHeader('set-cookie','browser_login=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0');json(res,200,{ok:true});return}
+if(!auth(req)){error(res,401,'Unauthorized');return}
 if(u.pathname==='/start'&&req.method==='POST'){
-  const data=await body(req);const width=validNumber(data.width,320,1600)?Math.floor(data.width):390;const height=validNumber(data.height,480,1200)?Math.floor(data.height):760;const language=data.language==='en'?'en':'nl';if(sessions.size>=1){error(res,429,'Er is al een browsersessie actief. Probeer het later opnieuw.');return}
-  const b=await browser();const context=await b.newContext({viewport:{width,height},deviceScaleFactor:1,isMobile:width<700,hasTouch:width<700,locale:'en-US',acceptDownloads:false});
+  const data=await body(req);const width=validNumber(data.width,320,1600)?Math.floor(data.width):390;const height=validNumber(data.height,480,1200)?Math.floor(data.height):760;const language=data.language==='en'?'en':'nl';if(sessions.size>=1){const existing=[...sessions.values()][0];existing.lastActive=Date.now();json(res,200,{id:existing.id,url:existing.page.url(),width:existing.page.viewportSize()?.width||390,height:existing.page.viewportSize()?.height||760,resumed:true});return}if(starting){error(res,429,'Browser start al op. Probeer opnieuw.');return}starting=true;
+  let context;try{const b=await browser();context=await b.newContext({viewport:{width,height},deviceScaleFactor:1,isMobile:width<700,hasTouch:width<700,locale:'en-US',acceptDownloads:false});}finally{starting=false}
   await context.route('**/*',async route=>{try{const url=route.request().url();if(/^(data:|blob:|about:)/.test(url)){await route.continue();return}await publicUrl(url);await route.continue()}catch{await route.abort('blockedbyclient').catch(()=>{})}});
   const page=await context.newPage();const cdp=await context.newCDPSession(page);const id=crypto.randomUUID();const s={id,context,page,cdp,language,cache:new Map(),translationError:'',lastActive:Date.now(),closed:false,timer:null};sessions.set(id,s);
   context.on('page',async popup=>{if(popup===s.page||s.closed)return;try{s.page=popup;s.cdp=await context.newCDPSession(popup);s.cache.clear();await popup.evaluate(lang=>{window.__translationTarget=lang},s.language)}catch{}});
@@ -42,6 +60,10 @@ if(u.pathname==='/start'&&req.method==='POST'){
   await page.evaluate(lang=>{window.__translationTarget=lang},language).catch(()=>{});
   json(res,200,{id,url:page.url(),width,height});return}
 const id=u.searchParams.get('id')||'';if(!id){error(res,400,'Session ID missing');return}const s=session(id);
+if(u.pathname==='/sync'&&req.method==='POST'){
+ if(s.syncing){json(res,200,{busy:true});return}s.syncing=true;
+ try{await s.page.evaluate(lang=>window.__translationTarget=lang,s.language).catch(()=>{});const candidates=await s.page.evaluate(scan).catch(()=>[]);const restored={};for(const t of candidates){const cached=s.cache.get(t.from+'|'+t.source);if(cached&&cached!==t.source)restored[t.source]=cached}if(Object.keys(restored).length)await s.page.evaluate(apply,restored).catch(()=>{});const next=candidates.filter(t=>!s.cache.has(t.from+'|'+t.source)).slice(0,5);const results=await Promise.all(next.map(async t=>({...t,target:await translateText(t.source,t.from,s.language)})));const replacements={};for(const t of results){s.cache.set(t.from+'|'+t.source,t.target);if(t.target!==t.source)replacements[t.source]=t.target}const count=Object.keys(restored).length+Object.keys(replacements).length;if(Object.keys(replacements).length)await s.page.evaluate(apply,replacements).catch(()=>{});json(res,200,{count,language:s.language,pageLanguage:await s.page.evaluate(()=>document.documentElement.lang||'').catch(()=>'')});return}finally{s.syncing=false}
+}
 if(u.pathname==='/pending'&&req.method==='GET'){json(res,200,{items:await pending(s),language:s.language,pageLanguage:await s.page.evaluate(()=>document.documentElement.lang||'').catch(()=>'')});return}
 if(u.pathname==='/translations'&&req.method==='POST'){
   const data=await body(req);if(!Array.isArray(data.items)||data.items.length>6)throw Error('Invalid translations');
@@ -59,9 +81,9 @@ if(u.pathname==='/action'&&req.method==='POST'){
     case 'back':await s.page.goBack({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});break;
     case 'forward':await s.page.goForward({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});break;
     case 'reload':await s.page.reload({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});break;
-    case 'navigate':await publicUrl(safeTarget(data.url));await s.page.goto(safeTarget(data.url),{waitUntil:'domcontentloaded',timeout:25000});s.cache.clear();break;
+    case 'navigate':{const dest=safeTarget(data.url);await publicUrl(dest);await s.page.goto(dest,{waitUntil:'domcontentloaded',timeout:25000});break}
     case 'search': {if(typeof data.query!=='string'||data.query.trim().length<1||data.query.length>150)throw Error('Ongeldige zoekopdracht');await s.page.goto('https://www.google.com/search?q='+encodeURIComponent(data.query.trim()),{waitUntil:'domcontentloaded',timeout:25000});s.cache.clear();break}
-    case 'siteSearch': {if(typeof data.query!=='string'||!data.query.trim()||data.query.length>150)throw Error('Ongeldige zoekopdracht');const input=s.page.locator('input[type="search"]:visible,input[name="q"]:visible,input[name="search"]:visible,input[placeholder]:visible').first();if(!await input.count())throw Error('Geen zoekveld op deze pagina gevonden');await input.fill(data.query.trim(),{timeout:5000});await input.press('Enter',{timeout:5000});s.cache.clear();break}
+    case 'siteSearch': {if(typeof data.query!=='string'||!data.query.trim()||data.query.length>150)throw Error('Ongeldige zoekopdracht');const input=s.page.locator('input[type="search"]:visible,input[name="q"]:visible,input[name="search"]:visible,input[placeholder]:visible').first();if(!await input.count())throw Error('Geen zoekveld op deze pagina gevonden');let phrase=data.query.trim();if(data.translate!==false){let pageLang=await s.page.evaluate(()=>{const l=(document.documentElement.lang||'').split('-')[0].toLowerCase();if(l)return l;const sample=(document.body?.innerText||'').slice(0,1500);if(/[\u3400-\u9fff]/.test(sample))return 'zh-CN';if(/[\u3040-\u30ff]/.test(sample))return 'ja';if(/[\u0400-\u04ff]/.test(sample))return 'ru';return 'en'}).catch(()=>'en');if(pageLang!==s.language)phrase=await translateText(phrase,s.language,pageLang)}await input.fill(phrase,{timeout:5000});await input.press('Enter',{timeout:5000});s.cache.clear();break}
     case 'language':if(!['nl','en'].includes(data.language))throw Error('Invalid language');s.language=data.language;s.cache.clear();await s.page.reload({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});break;
     default:throw Error('Invalid action')}
   await s.page.evaluate(lang=>{window.__translationTarget=lang},s.language).catch(()=>{});json(res,200,{ok:true,url:s.page.url()});return}

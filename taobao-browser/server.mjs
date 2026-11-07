@@ -150,7 +150,22 @@ if(u.pathname==='/action'&&req.method==='POST'){
   const data=await body(req);const op=data.op;switch(op){
     case 'click': if(!validNumber(data.x,0,1600)||!validNumber(data.y,0,1200))throw Error('Invalid coordinates');await s.page.mouse.click(Number(data.x),Number(data.y));break;
     case 'scroll': if(!validNumber(data.dy,-2500,2500))throw Error('Invalid scroll');await s.page.mouse.wheel(0,Number(data.dy));break;
-    case 'text': if(typeof data.text!=='string'||data.text.length>500)throw Error('Invalid text');await s.page.keyboard.insertText(data.text);break;
+    case 'text':{
+ if(typeof data.text!=='string'||data.text.length>500)throw Error('Invalid text');
+ const field=await s.page.evaluate(()=>{
+   const el=document.activeElement;
+   if(!el||el.tagName!=='INPUT')return {search:false};
+   const desc=[el.getAttribute('name'),el.getAttribute('id'),el.getAttribute('placeholder'),el.getAttribute('aria-label')].filter(Boolean).join(' ');
+   const search=el.type==='search'||/search|query|zoek|find|搜索|搜寻|検索|suche|recherche|buscar|찾기/i.test(desc)||['q','s','wd','keyword','keywords'].includes(el.name);
+   const html=(document.documentElement.lang||'').trim();
+   let language=html||'';
+   if(!language){const text=(document.body?.innerText||'').slice(0,1300);language=/[\u3400-\u9fff]/.test(text)?'zh-CN':/[\u3040-\u30ff]/.test(text)?'ja':'en'}
+   return {search,language};
+ }).catch(()=>({search:false}));
+ let entry=data.text;
+ if(field.search&&field.language&&field.language.split('-')[0]!==s.language)entry=await translateText(entry,s.language,field.language);
+ await s.page.keyboard.insertText(entry);break;
+}
     case 'key': if(!['Enter','Backspace','Tab','Escape','ArrowDown','ArrowUp'].includes(data.key))throw Error('Invalid key');await s.page.keyboard.press(data.key);break;
     case 'back':await s.page.goBack({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});break;
     case 'forward':await s.page.goForward({waitUntil:'domcontentloaded',timeout:12000}).catch(()=>{});break;

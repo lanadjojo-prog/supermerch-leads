@@ -11,7 +11,7 @@ let chromiumInstance;
 let launching;
 async function browser() {
   if (chromiumInstance?.isConnected()) return chromiumInstance;
-  if (!launching) launching = chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-zygote','--single-process']}).then(b=>{chromiumInstance=b;return b}).finally(()=>{launching=null});
+  if (!launching) launching = chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-zygote']}).then(b=>{chromiumInstance=b;return b}).finally(()=>{launching=null});
   return launching;
 }
 function json(res, status, value) {const data=JSON.stringify(value);res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','content-length':Buffer.byteLength(data)});res.end(data)}

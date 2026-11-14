@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 _guard = threading.Lock()
 MAILBOX = "gio@superfris.online"
 MAX_DRAFTS_PER_DAY = 30
-MAX_DRAFTS_PER_PASS = 5
+MAX_DRAFTS_PER_PASS = 30
 MAX_SEARCHES_PER_PASS = 3
 CATEGORIES = (
     ("Horeca", "restaurant", "menu- en drukwerkontwerp"),

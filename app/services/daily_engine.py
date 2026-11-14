@@ -94,7 +94,7 @@ def _run_daily_lead_engine_impl(db: Session) -> dict:
     discovery_error = None
     draft_start, draft_end, _ = _today_utc_bounds()
     drafts_already_reserved = _today_draft_count(db, draft_start, draft_end)
-    draft_batch = min(30, max(0, settings.daily_send_batch), max(0, 30 - drafts_already_reserved))
+    draft_batch = min(30, max(0, 30 if not settings.automated_outreach_enabled else settings.daily_send_batch), max(0, 30 - drafts_already_reserved))
     # Keep an individual worker below Render's idle shutdown interval. Another
     # scheduled wake resumes from the same deduplicated database state.
     search_deadline = time.monotonic() + 9 * 60

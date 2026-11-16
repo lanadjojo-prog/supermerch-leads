@@ -239,7 +239,9 @@ def _read_approved_strato_draft(client, lead: SuperfrisLead):
         if not payload:
             continue
         candidate = BytesParser(policy=policy.default).parsebytes(payload)
-        if str(candidate.get("X-Superfris-Lead-ID") or "") == str(lead.id):
+        if (str(candidate.get("X-Superfris-Lead-ID") or "") == str(lead.id)
+                and [e.lower() for _, e in getaddresses(candidate.get_all("To", []))] == [lead.email.lower()]
+                and str(candidate.get("Subject", "")).strip() == lead.subject.strip()):
             exact.append((uid, candidate))
     if len(exact) != 1:
         raise ValueError("DRAFT_NOT_UNIQUE_OR_MISSING")
@@ -410,3 +412,4 @@ def run_sender_loop(stop_event: threading.Event) -> None:
             finally:
                 db.close()
         stop_event.wait(SEND_INTERVAL_SECONDS)
+

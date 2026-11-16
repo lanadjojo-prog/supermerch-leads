@@ -211,6 +211,8 @@ def _signature_html() -> str:
 
 def _format_draft(to_address: str, subject: str, content: str,
                   *, lead_id: int | None = None) -> EmailMessage:
+    from .superfris_preview_recovery import preview_offer_content
+    content = preview_offer_content(content)
     msg = EmailMessage()
     msg["From"] = MAILBOX
     msg["To"] = to_address

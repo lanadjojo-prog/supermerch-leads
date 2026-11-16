@@ -160,6 +160,12 @@ def revoke(db: Session, lead_id: int) -> None:
         db.commit()
 
 
+def _daily_attempt_limit() -> int:
+    # Explicit owner-requested catch-up: only this date's existing 119 leads.
+    _, _, day = _today_bounds()
+    return 119 if day == "2026-11-16" else MAX_SENDS_PER_DAY
+
+
 def status(db: Session) -> dict:
     start, end, _ = _today_bounds()
     attempts = int(db.scalar(select(func.count(SuperfrisSendAuthorization.lead_id)).where(
@@ -179,7 +185,7 @@ def status(db: Session) -> dict:
         "smtp_network_allowed": _network_allowed(),
         "paused": _paused(db),
         "interval_seconds": SEND_INTERVAL_SECONDS,
-        "max_daily_attempts": MAX_SENDS_PER_DAY,
+        "max_daily_attempts": _daily_attempt_limit(),
         "attempts_today": attempts,
         "sent_today": sent,
         "approved_pending": queued,
@@ -215,7 +221,7 @@ def _read_approved_strato_draft(client, lead: SuperfrisLead):
         raise RuntimeError("DRAFTS_OR_SENT_FOLDER_MISSING")
     if client.select('"' + draft_folder + '"', readonly=False)[0] != "OK":
         raise RuntimeError("IMAP_SELECT_FAILED")
-    code, data = client.uid("SEARCH", None, "HEADER", "X-Superfris-Lead-ID", str(lead.id))
+    code, data = client.uid("SEARCH", None, "UNDELETED", "HEADER", "X-Superfris-Lead-ID", str(lead.id))
     if code != "OK":
         raise RuntimeError("DRAFT_SEARCH_FAILED")
     # IMAP HEADER SEARCH is a substring match: searching lead 1 may return
@@ -282,7 +288,7 @@ def send_one(db: Session) -> dict:
         if db.bind.dialect.name == "postgresql":
             db.execute(sql_text("SELECT pg_advisory_xact_lock(29102610)"))
         state = status(db)
-        if state["attempts_today"] >= MAX_SENDS_PER_DAY:
+        if state["attempts_today"] >= _daily_attempt_limit():
             db.rollback()
             return {"status": "daily_limit"}
         last = db.scalar(select(func.max(SuperfrisSendAuthorization.attempted_at)))
@@ -389,6 +395,8 @@ def send_one(db: Session) -> dict:
 
 def run_sender_loop(stop_event: threading.Event) -> None:
     """Each iteration sends at most one approved mail; 10s is the minimum delay."""
+    from .superfris_preview_recovery import recover_pending_previews
+    recover_pending_previews()
     while not stop_event.is_set():
         if _enabled() and _network_allowed():
             db = SessionLocal()

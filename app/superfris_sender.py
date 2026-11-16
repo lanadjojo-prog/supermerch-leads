@@ -161,10 +161,10 @@ def revoke(db: Session, lead_id: int) -> None:
 
 
 def _daily_attempt_limit() -> int:
-    # Explicit owner-requested catch-up: existing 119 leads plus the
-    # separately verified older draft sent once through STRATO webmail.
+    # Explicit owner-requested catch-up: the existing queue, one verified
+    # webmail recovery and at most thirty existing older outreach drafts.
     _, _, day = _today_bounds()
-    return 120 if day == "2026-11-16" else MAX_SENDS_PER_DAY
+    return 150 if day == "2026-11-16" else MAX_SENDS_PER_DAY
 
 
 def status(db: Session) -> dict:
@@ -400,6 +400,8 @@ def run_sender_loop(stop_event: threading.Event) -> None:
     """Each iteration sends at most one approved mail; 10s is the minimum delay."""
     from .superfris_preview_recovery import recover_pending_previews
     recover_pending_previews()
+    from .superfris_legacy_recovery import recover_legacy_outreach
+    recover_legacy_outreach()
     while not stop_event.is_set():
         if _enabled() and _network_allowed():
             db = SessionLocal()

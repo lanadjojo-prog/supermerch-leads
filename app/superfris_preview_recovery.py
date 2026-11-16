@@ -118,9 +118,19 @@ def recover_pending_previews() -> dict:
             ready = [(uid, msg) for uid, msg in exact if msg.get("X-Superfris-Preview-Version") == VERSION]
             if len(ready) > 1 or not exact:
                 raise RuntimeError("IMAP_PREVIEW_DRAFT_NOT_UNIQUE_OR_MISSING")
+            invalid = [msg for _, msg in exact if
+                       [e.lower() for _, e in getaddresses(msg.get_all("To", []))] != [lead.email.lower()]
+                       or msg.get("Cc") or msg.get("Bcc")]
+            if invalid:
+                logger.warning("Superfris preview header review required lead_id=%s to_count=%s cc=%s bcc=%s",
+                               lead.id, len(getaddresses(invalid[0].get_all("To", []))),
+                               bool(invalid[0].get("Cc")), bool(invalid[0].get("Bcc")))
+                authorization = db.get(SuperfrisSendAuthorization, lead.id)
+                authorization.status = "blocked"
+                authorization.error_type = "draft_headers_require_review"
+                db.commit()
+                continue
             for uid, msg in exact:
-                if [e.lower() for _, e in getaddresses(msg.get_all("To", []))] != [lead.email.lower()] or msg.get("Cc") or msg.get("Bcc"):
-                    raise RuntimeError("IMAP_RECIPIENT_MISMATCH")
                 if msg.get("X-Superfris-Preview-Version") != VERSION:
                     if client.uid("COPY", uid, backup)[0] != "OK":
                         raise RuntimeError("IMAP_BACKUP_COPY_FAILED")

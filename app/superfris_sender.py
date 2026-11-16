@@ -161,9 +161,10 @@ def revoke(db: Session, lead_id: int) -> None:
 
 
 def _daily_attempt_limit() -> int:
-    # Explicit owner-requested catch-up: only this date's existing 119 leads.
+    # Explicit owner-requested catch-up: existing 119 leads plus the
+    # separately verified older draft sent once through STRATO webmail.
     _, _, day = _today_bounds()
-    return 119 if day == "2026-11-16" else MAX_SENDS_PER_DAY
+    return 120 if day == "2026-11-16" else MAX_SENDS_PER_DAY
 
 
 def status(db: Session) -> dict:

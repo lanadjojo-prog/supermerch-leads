@@ -97,6 +97,23 @@ def recover_pending_previews() -> dict:
                 msg = BytesParser(policy=policy.default).parsebytes(raw)
                 if str(msg.get("X-Superfris-Lead-ID", "")) == str(lead.id):
                     exact.append((uid, msg))
+            if not exact:
+                # Older manually saved copies do not always carry our lead ID.
+                code, candidates = client.uid("SEARCH", None, "UNDELETED", "TO", '"' + lead.email + '"')
+                if code != "OK":
+                    raise RuntimeError("IMAP_RECIPIENT_SEARCH_FAILED")
+                for uid in (candidates[0] or b"").split():
+                    code, rows = client.uid("FETCH", uid, "(BODY.PEEK[])")
+                    if code != "OK":
+                        raise RuntimeError("IMAP_FETCH_FAILED")
+                    raw = next((p[1] for p in rows or [] if isinstance(p, tuple) and isinstance(p[1], bytes)), None)
+                    if raw is None:
+                        continue
+                    msg = BytesParser(policy=policy.default).parsebytes(raw)
+                    if (str(msg.get("Subject", "")).strip() == lead.subject.strip()
+                        and [e.lower() for _, e in getaddresses(msg.get_all("From", []))] == [MAILBOX.lower()]
+                        and str(msg.get("X-Superfris-Lead-ID", "")) in ("", str(lead.id))):
+                        exact.append((uid, msg))
             revised = preview_offer_content(lead.message)
             ready = [(uid, msg) for uid, msg in exact if msg.get("X-Superfris-Preview-Version") == VERSION]
             if len(ready) > 1 or not exact:
@@ -130,7 +147,8 @@ def recover_pending_previews() -> dict:
         return {"status": "complete", "changed": changed}
     except Exception as exc:
         db.rollback()
-        logger.warning("Superfris preview recovery stopped error=%s", type(exc).__name__)
+        detail = str(exc) if re.fullmatch(r"[A-Z_]+", str(exc)) else type(exc).__name__
+        logger.warning("Superfris preview recovery stopped error=%s", detail)
         return {"status": "failed", "error_type": type(exc).__name__}
     finally:
         if client:

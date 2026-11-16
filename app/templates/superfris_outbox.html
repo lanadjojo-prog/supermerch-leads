@@ -9,10 +9,10 @@
 </section>
 {% if notice %}<div class="notice">{{ notice }}</div>{% endif %}
 <section class="panel">
-  <h2>Wachtrij: elke 10 seconden · maximaal 30 pogingen per dag</h2>
+  <h2>Wachtrij: elke 10 seconden · maximaal {{ state.max_daily_attempts }} pogingen per dag</h2>
   <p>Automatisering: <strong>{{ "aan" if state.enabled else "uit" }}</strong>
    · Verzonden vandaag: <strong>{{ state.sent_today }}</strong>
-   · Pogingen vandaag: <strong>{{ state.attempts_today }}/30</strong>
+   · Pogingen vandaag: <strong>{{ state.attempts_today }}/{{ state.max_daily_attempts }}</strong>
    · Goedgekeurd wachtend: <strong>{{ state.approved_pending }}</strong></p>
   {% if state.blocked_reason == "resend_domain_or_api_key_unavailable" %}
   <div class="notice error">

@@ -49,7 +49,7 @@ def recover_pending_previews() -> dict:
     from .superfris_leads import MAILBOX, SuperfrisLead, _identify_draft_folder, _format_draft
     from .superfris_sender import SuperfrisSendAuthorization, _paused
 
-    key = "superfris-preview-recovery-20261116-v1"
+    key = "superfris-preview-recovery-20261116-v2"
     db = SessionLocal()
     client = None
     try:
@@ -97,6 +97,12 @@ def recover_pending_previews() -> dict:
                 msg = BytesParser(policy=policy.default).parsebytes(raw)
                 if str(msg.get("X-Superfris-Lead-ID", "")) == str(lead.id):
                     exact.append((uid, msg))
+            # Some legacy copies reuse a lead header. Match the actual
+            # recipient and subject too; never rewrite the mismatching copy.
+            exact = [(uid, msg) for uid, msg in exact if
+                     [e.lower() for _, e in getaddresses(msg.get_all("To", []))] == [lead.email.lower()]
+                     and str(msg.get("Subject", "")).strip() == lead.subject.strip()
+                     and not msg.get("Cc") and not msg.get("Bcc")]
             if not exact:
                 # Older manually saved copies do not always carry our lead ID.
                 code, candidates = client.uid("SEARCH", None, "UNDELETED", "TO", '"' + lead.email + '"')
